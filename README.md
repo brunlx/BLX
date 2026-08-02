@@ -50,16 +50,22 @@ embutido no binário via `go:embed` — **nenhum** Node/npm é necessário.
 
 ## Instalação e execução
 
-### 1. Clone
+### 1. Baixar binário (recomendado)
+
+Baixe o binário da sua plataforma em [Releases](https://github.com/Brunlx/BLX/releases)
+(Linux/macOS em `.tar.gz`, Windows em `.zip`), descompacte e execute:
+
+```bash
+# Linux/macOS
+tar xzf blx-linux-amd64.tar.gz
+PORT=8080 ./blx-linux-amd64
+```
+
+### 2. Compilar a partir do código
 
 ```bash
 git clone https://github.com/Brunlx/BLX.git
 cd BLX
-```
-
-### 2. Compilar
-
-```bash
 make build          # gera bin/blx
 ```
 
