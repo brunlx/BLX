@@ -1,0 +1,15 @@
+# Build artifacts
+bin/
+output/
+cmd/server/*.syso
+*.exe
+
+# Logs
+*.log
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
