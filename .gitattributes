@@ -1,0 +1,8 @@
+# Normaliza line endings (LF no repositório, CRLF no checkout Windows)
+* text=auto eol=lf
+
+# Arquivos binários
+*.png binary
+*.ico binary
+*.exe binary
+*.syso binary

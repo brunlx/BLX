@@ -563,7 +563,7 @@ function topbar() {
     <header class="topbar">
       <div class="topbar__inner">
         <button class="logo" data-action="home">
-          <span class="logo__mark">🛡</span>
+          <img class="logo__mark" src="/assets/blx-logo.png" alt="BLX" />
           <span class="logo__name">BLX</span>
         </button>
         <div class="status"><span class="status__dot"></span> API online</div>

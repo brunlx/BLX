@@ -4,7 +4,10 @@ Gerador de comandos de pentest: o profissional **escolhe a ferramenta**, o app
 **pergunta como e com o que** ela será usada e, ao final, entrega **comandos
 prontos para copiar** (ou baixar como script `.sh`).
 
-![stack](https://img.shields.io/badge/stack-Go_1.26-brightgreen) ![ui](https://img.shields.io/badge/UI-Vanilla_JS_SPA-22d3ee) ![test](https://img.shields.io/badge/tests-go_test-2ea043)
+![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white&style=flat-square)
+![UI](https://img.shields.io/badge/UI-Vanilla_JS_SPA-22d3ee?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-go_test-2ea043?style=flat-square)
+![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
 
 > Ferramentas de teste de intrusão **devem** ser usadas somente em sistemas e
 > redes para os quais você possui **autorização formal e escrita**. Uso não
@@ -144,14 +147,15 @@ BLX/
 │   ├── static/                   # frontend embutido via go:embed
 │   │   └── web/
 │   │       ├── index.html
-│   │       └── assets/{styles.css, app.js}
+│   │       └── assets/{styles.css, app.js, blx-logo.png}
 │   └── tools/                    # catálogo + motor de geração
 │       ├── catalog.go            # modelos, validação, registro
 │       ├── tools.go              # definições das 24 ferramentas
 │       ├── generators.go         # geração de comandos por ferramenta
 │       └── helpers.go            # shell-quoting e utilitários
-├── assets/                       # ícone + imagens do wizard
-│   ├── icon.ico / icon.png
+├── assets/                       # logo oficial + imagens do wizard
+│   ├── blx-logo.png              # logo oficial (fonte do icon.ico)
+│   ├── icon.ico                  # ícone do instalador/executável
 │   ├── wizard-large.png          # painel lateral do instalador (164x314)
 │   └── wizard-small.png          # ícone pequeno do instalador (55x58)
 ├── .github/workflows/ci.yml      # CI (vet, test, build Linux/Windows)
@@ -215,6 +219,11 @@ Tipos de pergunta suportados: `text`, `number`, `select`, `multi`, `boolean`.
 
 Distribuído sob a **Licença MIT**. Veja os termos completos em
 [LICENSE.txt](LICENSE.txt) (exibidos também durante a instalação no Windows).
+
+## Segurança
+
+Encontrou uma vulnerabilidade no BLX? Veja nossa [política de divulgação
+responsável](SECURITY.md) antes de reportar.
 
 > Ferramentas de segurança ofensiva **devem** ser usadas somente em sistemas e
 > redes para os quais você possui autorização formal e escrita. O autor não se

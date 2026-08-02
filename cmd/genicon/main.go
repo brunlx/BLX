@@ -1,5 +1,5 @@
-// Gera os ícones do BLX (PNG/ICO) e as imagens do wizard de
-// instalação usadas pelo Inno Setup.
+// Gera o ícone do BLX (ICO) a partir de assets/blx-logo.png e as
+// imagens do wizard de instalação usadas pelo Inno Setup.
 package main
 
 import (
@@ -12,6 +12,9 @@ import (
 	"math"
 	"os"
 )
+
+// iconSource é o arquivo da logo oficial do app, usado como fonte do icon.ico.
+const iconSource = "assets/blx-logo.png"
 
 type vec struct{ x, y float64 }
 
@@ -27,23 +30,23 @@ var (
 )
 
 func main() {
+	src, err := loadSource(iconSource)
+	if err != nil {
+		panic(err)
+	}
+
 	sizes := []int{16, 32, 48, 256}
 	var pngs [][]byte
 
 	for _, s := range sizes {
-		img := downsample(renderAppIcon(s*4), s)
 		var buf bytes.Buffer
-		if err := png.Encode(&buf, img); err != nil {
+		if err := png.Encode(&buf, resize(src, s)); err != nil {
 			panic(err)
 		}
 		pngs = append(pngs, buf.Bytes())
 	}
 
 	if err := writeICO("assets/icon.ico", sizes, pngs); err != nil {
-		panic(err)
-	}
-
-	if err := writePNG("assets/icon.png", downsample(renderAppIcon(1024), 256)); err != nil {
 		panic(err)
 	}
 
@@ -54,37 +57,17 @@ func main() {
 		panic(err)
 	}
 
-	fmt.Println("ícones e wizard gerados em assets/")
+	fmt.Println("ícone (a partir de", iconSource, ") e wizard gerados em assets/")
 }
 
-// renderAppIcon desenha o ícone do app (fundo arredondado + escudo).
-func renderAppIcon(size int) *image.RGBA {
-	img := image.NewRGBA(image.Rect(0, 0, size, size))
-	s := float64(size)
-
-	for y := 0; y < size; y++ {
-		for x := 0; x < size; x++ {
-			c := color.RGBA{0, 0, 0, 0}
-			px, py := float64(x), float64(y)
-
-			rr := 0.22 * s
-			dx := math.Max(math.Abs(px-s/2)-(s/2-rr), 0)
-			dy := math.Max(math.Abs(py-s/2)-(s/2-rr), 0)
-			sdf := math.Hypot(dx, dy)
-
-			switch {
-			case sdf <= rr:
-				c = bgBottom
-				if sdf > rr-0.035*s {
-					c = borderC
-				}
-			}
-			img.Set(x, y, c)
-		}
+// loadSource carrega a logo oficial do app.
+func loadSource(path string) (image.Image, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
 	}
-
-	drawShield(img, s/2, s*0.46, s*0.62)
-	return img
+	defer f.Close()
+	return png.Decode(f)
 }
 
 // renderWizard desenha o painel do instalador: gradiente, grade sutil,
@@ -214,31 +197,53 @@ func distToSeg(px, py, ax, ay, bx, by float64) float64 {
 	return math.Hypot(px-qx, py-qy)
 }
 
-func downsample(src *image.RGBA, n int) *image.RGBA {
+// resize redimensiona a imagem de origem para n x n usando bilinear.
+func resize(src image.Image, n int) *image.RGBA {
 	dst := image.NewRGBA(image.Rect(0, 0, n, n))
-	f := src.Bounds().Dx() / n
+	b := src.Bounds()
+	sw, sh := float64(b.Dx()), float64(b.Dy())
 	for y := 0; y < n; y++ {
 		for x := 0; x < n; x++ {
-			var r, g, b, a, count int
-			for dy := 0; dy < f; dy++ {
-				for dx := 0; dx < f; dx++ {
-					c := src.RGBAAt(x*f+dx, y*f+dy)
-					r += int(c.R)
-					g += int(c.G)
-					b += int(c.B)
-					a += int(c.A)
-					count++
-				}
-			}
-			dst.SetRGBA(x, y, color.RGBA{
-				R: uint8(r / count),
-				G: uint8(g / count),
-				B: uint8(b / count),
-				A: uint8(a / count),
-			})
+			sx := (float64(x)+0.5)*sw/float64(n) - 0.5
+			sy := (float64(y)+0.5)*sh/float64(n) - 0.5
+			dst.SetRGBA(x, y, sampleBilinear(src, sx, sy))
 		}
 	}
 	return dst
+}
+
+func sampleBilinear(src image.Image, x, y float64) color.RGBA {
+	b := src.Bounds()
+	maxX, maxY := b.Dx()-1, b.Dy()-1
+	xi := int(math.Floor(x))
+	yi := int(math.Floor(y))
+	if xi < 0 {
+		xi = 0
+	}
+	if yi < 0 {
+		yi = 0
+	}
+	if xi >= maxX {
+		xi = maxX - 1
+	}
+	if yi >= maxY {
+		yi = maxY - 1
+	}
+	tx := x - float64(xi)
+	ty := y - float64(yi)
+
+	c00 := color.RGBAModel.Convert(src.At(xi, yi)).(color.RGBA)
+	c10 := color.RGBAModel.Convert(src.At(xi+1, yi)).(color.RGBA)
+	c01 := color.RGBAModel.Convert(src.At(xi, yi+1)).(color.RGBA)
+	c11 := color.RGBAModel.Convert(src.At(xi+1, yi+1)).(color.RGBA)
+
+	lerp := func(a, b, c, d float64) float64 { return a + (b-a)*tx + (c-a)*ty + (a-b-c+d)*tx*ty }
+	return color.RGBA{
+		R: uint8(lerp(float64(c00.R), float64(c10.R), float64(c01.R), float64(c11.R))),
+		G: uint8(lerp(float64(c00.G), float64(c10.G), float64(c01.G), float64(c11.G))),
+		B: uint8(lerp(float64(c00.B), float64(c10.B), float64(c01.B), float64(c11.B))),
+		A: uint8(lerp(float64(c00.A), float64(c10.A), float64(c01.A), float64(c11.A))),
+	}
 }
 
 func writePNG(path string, img image.Image) error {
