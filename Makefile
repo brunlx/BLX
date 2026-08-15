@@ -9,7 +9,7 @@ WINVER   ?= 0.2.0
 WINRES   := $(shell go env GOPATH)/bin/go-winres
 WINRES_JSON := winres/winres.json
 
-.PHONY: all build build-windows winres build-icon build-installer run test test-race vet fmt clean
+.PHONY: all build build-windows winres build-icon build-installer apk run test test-race vet fmt clean
 
 all: build
 
@@ -34,6 +34,9 @@ build-icon:
 
 build-installer: build-windows
 	wine "C:/Program Files/Inno Setup 7/ISCC.exe" /F"BLX-Setup" installer.iss
+
+apk:
+	./android/build-apk.sh
 
 run: build
 	PORT=8080 $(BIN)

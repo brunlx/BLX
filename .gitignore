@@ -4,6 +4,12 @@ output/
 cmd/server/*.syso
 *.exe
 
+# Android
+android/*.apk
+android/*.apk.idsig
+android/keystore.jks
+android/stage/
+
 # Logs
 *.log
 
