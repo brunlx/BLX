@@ -50,50 +50,73 @@ embutido no binário via `go:embed` — **nenhum** Node/npm é necessário.
 
 ## Instalação e execução
 
-### 1. Baixar binário (recomendado)
+O BLX é **um único binário** com o frontend embutido — não há nada para instalar
+além dele. Escolha um dos caminhos abaixo.
 
-Baixe o binário da sua plataforma em [Releases](https://github.com/Brunlx/BLX/releases)
-(Linux/macOS em `.tar.gz`, Windows em `.zip`), descompacte e execute:
+### 1. Baixar o binário (recomendado)
+
+Baixe o arquivo da sua plataforma em [Releases](https://github.com/Brunlx/BLX/releases)
+e descompacte:
+
+| Plataforma                            | Arquivo na release              | Extrair                          |
+| ------------------------------------- | ------------------------------- | -------------------------------- |
+| Linux x64 (Intel/AMD)                 | `blx-linux-amd64.tar.gz`        | `tar xzf blx-linux-amd64.tar.gz` |
+| Linux ARM64 (Raspberry Pi, etc.)      | `blx-linux-arm64.tar.gz`        | `tar xzf blx-linux-arm64.tar.gz` |
+| macOS Apple Silicon                   | `blx-darwin-arm64.tar.gz`       | `tar xzf blx-darwin-arm64.tar.gz` |
+| macOS Intel                           | `blx-darwin-amd64.tar.gz`       | `tar xzf blx-darwin-amd64.tar.gz` |
+| Windows x64                           | `blx-windows-amd64.zip`         | botão direito → *Extrair tudo*   |
+
+Depois execute:
 
 ```bash
 # Linux/macOS
-tar xzf blx-linux-amd64.tar.gz
-PORT=8080 ./blx-linux-amd64
+./blx-linux-amd64          # ajuste para o arquivo baixado
+
+# Windows (Prompt/CMD)
+blx-windows-amd64.exe
 ```
 
+O navegador abre sozinho em **http://localhost:8080**.
+
+> **Windows:** por não ser assinado, o SmartScreen/Defender pode exibir um aviso —
+> clique em *Mais informações > Executar assim mesmo*. Para distribuir sem alerta,
+> veja [Instalação no Windows (distribuição)](#instalação-no-windows-distribuição).
+>
+> **macOS:** na primeira execução o Gatekeeper pode bloquear o binário. Clique com
+> o botão direito no arquivo → *Abrir* (ou rode `xattr -d com.apple.quarantine blx-...`).
+
 ### 2. Compilar a partir do código
+
+Requer [Go](https://go.dev/dl/) 1.26+ e `make` (opcional):
 
 ```bash
 git clone https://github.com/Brunlx/BLX.git
 cd BLX
-make build          # gera bin/blx
+make build            # gera bin/blx
+# ou, sem make:
+go build -o bin/blx ./cmd/server
 ```
 
 ### 3. Executar
 
 ```bash
-make run            # build + sobe em http://localhost:8080
+make run              # build + sobe em http://localhost:8080
 ```
 
-Ou, sem `make`:
+Ou direto no binário compilado:
 
 ```bash
-go build -o bin/blx ./cmd/server
-PORT=8080 bin/blx
+PORT=8080 ./bin/blx
 ```
 
-Para conferir a versão do binário (informada pelo build de release):
+- **`-no-browser`** — não abre o navegador (útil em servidores headless/SSH).
+- **`-version`** — mostra a versão do binário (ex.: `v0.2.0`).
 
-```bash
-./blx -version   # ex.: v0.2.0
-```
+Para servir **outras máquinas da rede** (ex.: notebooks da equipe), rode com
+`HOST=0.0.0.0` — o app avisa no log e você libera a porta no firewall.
 
-Abra **http://localhost:8080** no navegador. Para servir para outras máquinas
-na rede (ex.: notebooks da equipe), rode com `HOST=0.0.0.0`.
-
-Ao iniciar, o BLX **abre o navegador automaticamente** na interface (como um
-app comum) — basta executar o binário. Em servidores sem desktop/headless,
-use `-no-browser` para desativar esse comportamento.
+> **Android:** também existe um [APK com o servidor embutido](android/README.md)
+> (WebView local, 100% offline).
 
 ### Variáveis de ambiente
 
@@ -102,6 +125,15 @@ use `-no-browser` para desativar esse comportamento.
 | `HOST`        | `127.0.0.1` | Endereço de bind. Use `0.0.0.0` para acesso LAN. |
 | `PORT`        | `8080`      | Porta HTTP.                                      |
 | `CORS_ORIGIN` | (vazio)     | Habilita CORS apenas para esta origem (dev).     |
+
+### Solução de problemas
+
+| Sintoma | Causa provável | Solução |
+| ------- | -------------- | ------- |
+| `bind: address already in use` | Porta 8080 ocupada | Rode com outra porta: `PORT=8081 ./blx` |
+| Interface não abre em outra máquina | Firewall bloqueando | Libere a porta: `sudo ufw allow 8080` (Linux) ou regra de firewall no Windows (ver `installer.iss`) |
+| Acesso negado ao executar (Linux) | Permissão de execução | `chmod +x blx-linux-amd64` |
+| Página abre, mas o catálogo não carrega | Versão antiga / cache do navegador | Recarregue com `Ctrl+Shift+R` ou use a versão mais recente da release |
 
 ## Como usar
 
