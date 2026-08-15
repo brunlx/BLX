@@ -77,11 +77,13 @@ func shquote(v string) string {
 // quotes only when it contains whitespace or shell metacharacters.
 // Tilde is deliberately excluded: wrapping "~" in quotes would prevent the
 // shell from expanding paths such as ~/wordlists/rockyou.txt.
+// "#" and "!" are treated as metacharacters: unquoted, "#" would truncate the
+// line as a comment and "!" triggers history expansion in interactive bash.
 func q(v string) string {
 	if v == "" {
 		return ""
 	}
-	needsQuote := strings.ContainsAny(v, " \t\n\r;&|$()<>`\"'\\*?[]{}")
+	needsQuote := strings.ContainsAny(v, " \t\n\r;&|$()<>`\"'\\*?[]{}#!")
 	if needsQuote {
 		return shquote(v)
 	}
@@ -126,13 +128,49 @@ func validIface(v string) bool {
 // validPort reports whether p is within the TCP/UDP port range.
 func validPort(p int) bool { return p >= 1 && p <= 65535 }
 
+// validEncoder reports whether v is a safe msfvenom encoder name
+// (e.g. x86/shikata_ga_nai). It allows only module-path characters, never
+// whitespace or shell metacharacters.
+func validEncoder(v string) bool {
+	if v == "" || len(v) > 64 {
+		return false
+	}
+	for _, r := range v {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == '/', r == '_', r == '-', r == '.', r == '+':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// validModulePath reports whether v is a safe Metasploit module path
+// (e.g. exploit/windows/smb/ms17_010_eternalblue). It must contain at least
+// one "/" and only path-safe characters.
+func validModulePath(v string) bool {
+	if v == "" || len(v) > 200 || !strings.Contains(v, "/") {
+		return false
+	}
+	for _, r := range v {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == '/', r == '_', r == '-', r == '.', r == '+':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // safeDQ reports whether v is safe to embed inside a double-quoted string.
 // The generated mimikatz command line is double-quoted and may run under
 // cmd, PowerShell or a POSIX shell, so the block list covers all three:
-// double quotes and newlines break out everywhere, while "$" and the
-// backtick enable command substitution in PowerShell/POSIX shells.
+// double quotes and newlines break out everywhere, "$", backtick and "%"
+// enable variable/command substitution in PowerShell/cmd/POSIX shells.
 // Backslashes are allowed on purpose: Windows ticket paths (C:\...\x.kirbi)
 // require them, and a bare "\" is inert inside double quotes in every shell.
 func safeDQ(v string) bool {
-	return !strings.ContainsAny(v, "\"$\n\r`")
+	return !strings.ContainsAny(v, "\"$\n\r`%")
 }

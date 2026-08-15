@@ -105,6 +105,23 @@ func TestGenerateMetasploitHandler(t *testing.T) {
 	}
 }
 
+func TestGenerateMetasploitBindTcpHandlerSetsRHOSTS(t *testing.T) {
+	c := NewCatalog()
+	res, err := c.Generate("metasploit", map[string]string{
+		"platform": "windows",
+		"listener": "bind_tcp",
+		"lport":    "4444",
+		"rtarget":  "10.10.10.5",
+	})
+	if err != nil {
+		t.Fatalf("erro: %v", err)
+	}
+	handler := res.Commands[1].Code
+	if !strings.Contains(handler, "set RHOSTS 10.10.10.5") {
+		t.Errorf("handler bind tcp deveria definir RHOSTS: %q", handler)
+	}
+}
+
 func TestGenerateHydraHTTPForm(t *testing.T) {
 	c := NewCatalog()
 	res, err := c.Generate("hydra", map[string]string{
@@ -216,6 +233,27 @@ func TestQuotingPreservesTilde(t *testing.T) {
 	}
 	if got := q("~/pwn; rm -rf /"); got != "'~/pwn; rm -rf /'" {
 		t.Errorf("metacaracteres ainda devem ser quotados, obtive %q", got)
+	}
+}
+
+func TestQuotingProtectsHashAndBang(t *testing.T) {
+	// "#" sem aspas vira comentário e trunca a linha; "!" dispara history
+	// expansion no bash interativo. Ambos precisam de quoting.
+	if got := q("#comando"); got != "'#comando'" {
+		t.Errorf("'#' deveria ser quotado, obtive %q", got)
+	}
+	if got := q("pass!x"); got != "'pass!x'" {
+		t.Errorf("'!' deveria ser quotado, obtive %q", got)
+	}
+}
+
+func TestSafeDQBlocksPercent(t *testing.T) {
+	// "%" expande %VAR% no cmd.exe mesmo dentro de aspas duplas.
+	if safeDQ("user%COMPUTERNAME%") {
+		t.Errorf("safeDQ deveria rejeitar '%%', obtive aceito")
+	}
+	if !safeDQ(`C:\Temp\ticket.kirbi`) {
+		t.Errorf("safeDQ deveria aceitar caminhos com backslash")
 	}
 }
 
@@ -497,6 +535,34 @@ func TestGenerateBloodHoundSharpHound(t *testing.T) {
 	}
 }
 
+func TestGenerateBloodHoundSharpHoundNoCreds(t *testing.T) {
+	c := NewCatalog()
+	res, err := c.Generate("bloodhound", map[string]string{
+		"collector": "sharphound",
+		"method":    "All",
+		"neo4j":     "false",
+	})
+	if err != nil {
+		t.Fatalf("sharphound sem user/domain deveria passar: %v", err)
+	}
+	if !strings.Contains(res.Commands[0].Code, `.\SharpHound.exe -c All`) {
+		t.Errorf("comando sharphound inesperado: %q", res.Commands[0].Code)
+	}
+}
+
+func TestGenerateBloodHoundPythonRequiresUser(t *testing.T) {
+	c := NewCatalog()
+	_, err := c.Generate("bloodhound", map[string]string{
+		"collector": "bloodhound-python",
+		"domain":    "corp.local",
+		"method":    "All",
+	})
+	var ve *ValidationError
+	if !errors.As(err, &ve) || ve.ID != "user" {
+		t.Fatalf("esperava ValidationError de usuário para bloodhound-python, obtive %v", err)
+	}
+}
+
 func TestNoCommandInjection(t *testing.T) {
 	c := NewCatalog()
 
@@ -627,6 +693,74 @@ func TestGenerateMsfvenomInvalidLHOST(t *testing.T) {
 	}
 }
 
+func TestGenerateMsfvenomEncoder(t *testing.T) {
+	c := NewCatalog()
+	res, err := c.Generate("msfvenom", map[string]string{
+		"platform":    "linux",
+		"listener":    "reverse_tcp",
+		"lhost":       "10.10.14.5",
+		"lport":       "4444",
+		"encoder":     "x86/shikata_ga_nai",
+		"encoderIter": "5",
+	})
+	if err != nil {
+		t.Fatalf("erro: %v", err)
+	}
+	code := res.Commands[0].Code
+	if !strings.Contains(code, "-e x86/shikata_ga_nai -i 5") {
+		t.Errorf("encoder deveria virar -e <nome> -i 5 como argumentos separados: %q", code)
+	}
+}
+
+func TestGenerateMsfvenomEncoderInvalid(t *testing.T) {
+	c := NewCatalog()
+	_, err := c.Generate("msfvenom", map[string]string{
+		"platform":    "linux",
+		"listener":    "reverse_tcp",
+		"lhost":       "10.10.14.5",
+		"encoder":     "x86/shikata_ga_nai -i 5",
+		"encoderIter": "5",
+	})
+	var ve *ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("esperava ValidationError para encoder com espaço, obtive %v", err)
+	}
+}
+
+func TestGenerateMsfvenomBindTcpNoLHOST(t *testing.T) {
+	c := NewCatalog()
+	res, err := c.Generate("msfvenom", map[string]string{
+		"platform": "windows",
+		"listener": "bind_tcp",
+		"lport":    "4444",
+		"target":   "10.10.10.5",
+	})
+	if err != nil {
+		t.Fatalf("bind tcp sem LHOST deveria passar: %v", err)
+	}
+	code := res.Commands[0].Code
+	if strings.Contains(code, "LHOST") {
+		t.Errorf("bind tcp não deveria conter LHOST: %q", code)
+	}
+	handler := res.Commands[1].Code
+	if !strings.Contains(handler, "set RHOSTS 10.10.10.5") {
+		t.Errorf("handler bind tcp deveria definir RHOSTS: %q", handler)
+	}
+}
+
+func TestGenerateMsfvenomReverseRequiresLHOST(t *testing.T) {
+	c := NewCatalog()
+	_, err := c.Generate("msfvenom", map[string]string{
+		"platform": "linux",
+		"listener": "reverse_tcp",
+		"lport":    "4444",
+	})
+	var ve *ValidationError
+	if !errors.As(err, &ve) || ve.ID != "lhost" {
+		t.Fatalf("esperava ValidationError de LHOST para reverse sem LHOST, obtive %v", err)
+	}
+}
+
 func TestGenerateMasscan(t *testing.T) {
 	c := NewCatalog()
 	res, err := c.Generate("masscan", map[string]string{
@@ -677,6 +811,36 @@ func TestGenerateBeEFSource(t *testing.T) {
 	}
 	if !strings.Contains(res.Commands[0].Code, "git clone https://github.com/beefproject/beef") {
 		t.Errorf("comando source inesperado: %q", res.Commands[0].Code)
+	}
+}
+
+func TestGenerateBeEFNonDefaultPortNote(t *testing.T) {
+	c := NewCatalog()
+	res, err := c.Generate("beef", map[string]string{
+		"install":  "apt",
+		"port":     "8080",
+		"hookHost": "10.10.14.5",
+	})
+	if err != nil {
+		t.Fatalf("erro: %v", err)
+	}
+	joined := strings.Join(res.Notes, "\n")
+	if !strings.Contains(joined, "config.yaml") {
+		t.Errorf("porta fora do padrão deveria gerar nota sobre config.yaml: %q", res.Notes)
+	}
+}
+
+func TestGenerateMetasploitInvalidModule(t *testing.T) {
+	c := NewCatalog()
+	_, err := c.Generate("metasploit", map[string]string{
+		"platform": "windows",
+		"listener": "reverse_tcp",
+		"lhost":    "10.10.14.5",
+		"module":   "exploit/windows/smb/ms17 010 eternalblue",
+	})
+	var ve *ValidationError
+	if !errors.As(err, &ve) || ve.ID != "module" {
+		t.Fatalf("esperava ValidationError de módulo, obtive %v", err)
 	}
 }
 
@@ -820,6 +984,18 @@ func TestGenerateRDNSDig(t *testing.T) {
 	}
 	if !strings.Contains(res.Commands[0].Code, "dig -x 10.0.0.1 @8.8.8.8") {
 		t.Errorf("comando dig inesperado: %q", res.Commands[0].Code)
+	}
+}
+
+func TestGenerateRDNSDigRejectsRange(t *testing.T) {
+	c := NewCatalog()
+	_, err := c.Generate("rdns", map[string]string{
+		"target": "10.0.0.0/24",
+		"method": "dig",
+	})
+	var ve *ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("dig com CIDR deveria ser rejeitado, obtive %v", err)
 	}
 }
 

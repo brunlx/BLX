@@ -22,8 +22,27 @@ VERSION="${VERSION:-$(git -C "$REPO_DIR" describe --tags --abbrev=0 2>/dev/null 
 VERSION="${VERSION#v}"
 VERSION_CODE="${VERSION_CODE:-1}"
 KEYSTORE="$SCRIPT_DIR/keystore.jks"
-KEYSTORE_PASS="${KEYSTORE_PASS:-blx-apk-$(sha1sum /dev/null | cut -c1-4)}"
+KEYSTORE_PASS_FILE="$SCRIPT_DIR/.keystore-pass"
 APK_OUT="$SCRIPT_DIR/BLX-$VERSION.apk"
+
+# A senha do keystore de assinatura é aleatória (nunca determinística), gerada
+# na primeira execução e persistida em .keystore-pass (gitignored, chmod 600).
+# Para CI/reprodução, sobrescreva com KEYSTORE_PASS e gere o keystore uma vez.
+resolve_keystore_pass() {
+  if [ -n "${KEYSTORE_PASS:-}" ]; then
+    return
+  fi
+  if [ -f "$KEYSTORE_PASS_FILE" ]; then
+    KEYSTORE_PASS="$(cat "$KEYSTORE_PASS_FILE")"
+    return
+  fi
+  if [ -f "$KEYSTORE" ]; then
+    echo "!! Keystore existente sem senha salva em $KEYSTORE_PASS_FILE." >&2
+    echo "   Defina a variável KEYSTORE_PASS com a senha usada ao gerá-lo." >&2
+    exit 1
+  fi
+  KEYSTORE_PASS="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 24)"
+}
 
 ensure_sdk() {
   if [ -x "$BT/aapt2" ] && [ -f "$PLATFORM/android.jar" ]; then
@@ -70,9 +89,12 @@ ensure_keystore() {
   keytool -genkeypair -keystore "$KEYSTORE" -storepass "$KEYSTORE_PASS" \
     -keyalg RSA -keysize 2048 -validity 10950 -alias blx \
     -dname "CN=BLX, OU=BLX, O=BLX, C=BR" -keypass "$KEYSTORE_PASS" >/dev/null 2>&1
+  umask 077
+  printf '%s' "$KEYSTORE_PASS" > "$KEYSTORE_PASS_FILE"
 }
 
 build() {
+  resolve_keystore_pass
   ensure_sdk
   ensure_keystore
   mkdir -p "$SCRIPT_DIR/stage/classes" "$SCRIPT_DIR/stage/dex" "$SCRIPT_DIR/stage/res"

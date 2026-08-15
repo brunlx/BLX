@@ -8,6 +8,7 @@ cmd/server/*.syso
 android/*.apk
 android/*.apk.idsig
 android/keystore.jks
+android/.keystore-pass
 android/stage/
 
 # Logs

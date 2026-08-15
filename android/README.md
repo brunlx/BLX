@@ -52,6 +52,10 @@ Só **arm64-v8a** (Android 7+). O Go sem cgo/NDK não compila `android/arm` nem
 
 ## Assinatura
 
-Um keystore auto-assinado é gerado na primeira execução (`android/keystore.jks`).
+Um keystore auto-assinado é gerado na primeira execução (`android/keystore.jks`)
+com uma senha **aleatória** persistida em `android/.keystore-pass` (ambos
+gitignored, não commitá-los). Para builds reproduzíveis/CI, gere o keystore uma
+vez e defina a variável `KEYSTORE_PASS` com a senha usada.
+
 Serve para instalação manual (sideload). Para publicar na Play Store é preciso
 gerar um keystore de produção e guardá-lo com segurança.

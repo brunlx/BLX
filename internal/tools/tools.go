@@ -340,7 +340,7 @@ var metasploitTool = &Tool{
 			Label:       "LHOST (seu IP de atacante)",
 			Type:        "text",
 			Placeholder: "10.10.14.5",
-			Required:    true,
+			Help:        "Necessário para payloads reverse (bind TCP não usa LHOST).",
 		},
 		{
 			ID:      "lport",
@@ -835,7 +835,7 @@ var bloodhoundTool = &Tool{
 			Label:       "Usuário",
 			Type:        "text",
 			Placeholder: "svc_probe",
-			Required:    true,
+			Help:        "Usado apenas pelo bloodhound-python. O SharpHound roda no host Windows com as próprias credenciais.",
 		},
 		{
 			ID:          "password",
@@ -854,7 +854,7 @@ var bloodhoundTool = &Tool{
 			Label:       "Domínio",
 			Type:        "text",
 			Placeholder: "corp.local",
-			Required:    true,
+			Help:        "Usado apenas pelo bloodhound-python.",
 		},
 		{
 			ID:          "ns",
@@ -1060,13 +1060,20 @@ var msfvenomTool = &Tool{
 			Label:       "LHOST (seu IP de atacante)",
 			Type:        "text",
 			Placeholder: "10.10.14.5",
-			Required:    true,
+			Help:        "Necessário para payloads reverse (bind TCP não usa LHOST).",
 		},
 		{
 			ID:      "lport",
 			Label:   "LPORT",
 			Type:    "number",
 			Default: "4444",
+		},
+		{
+			ID:          "target",
+			Label:       "Alvo (RHOSTS, opcional)",
+			Type:        "text",
+			Placeholder: "10.10.10.5",
+			Help:        "Necessário no handler quando o payload é bind TCP: o listener conecta ao alvo.",
 		},
 		{
 			ID:      "format",
@@ -1088,8 +1095,17 @@ var msfvenomTool = &Tool{
 			ID:          "encoder",
 			Label:       "Encoder (opcional)",
 			Type:        "text",
-			Placeholder: "x86/shikata_ga_nai -i 5",
-			Help:        "Ex.: x86/shikata_ga_nai com -i 5. Não garante evasão de AV.",
+			Placeholder: "x86/shikata_ga_nai",
+			Help:        "Apenas o nome do encoder, ex.: x86/shikata_ga_nai. Não garante evasão de AV.",
+		},
+		{
+			ID:      "encoderIter",
+			Label:   "Iterações do encoder (-i)",
+			Type:    "number",
+			Default: "1",
+			Min:     1,
+			Max:     100,
+			Help:    "Quantas vezes aplicar o encoder (usado apenas se você preencheu o encoder).",
 		},
 	},
 }
