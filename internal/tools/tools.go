@@ -154,6 +154,7 @@ var gobusterTool = &Tool{
 			Label:   "Número de threads",
 			Type:    "number",
 			Default: "40",
+			Min:     1,
 		},
 		{
 			ID:          "status",
@@ -188,6 +189,8 @@ var niktoTool = &Tool{
 			Type:        "number",
 			Placeholder: "8080",
 			Help:        "Usa -p. Deixe vazio para a porta padrão.",
+			Min:         1,
+			Max:         65535,
 		},
 		{
 			ID:    "ssl",
@@ -265,6 +268,8 @@ var sqlmapTool = &Tool{
 			Type:    "number",
 			Default: "1",
 			Help:    "Quanto maior, mais testes e payloads. Use 3 com autorização.",
+			Min:     1,
+			Max:     3,
 		},
 		{
 			ID:      "risk",
@@ -272,12 +277,15 @@ var sqlmapTool = &Tool{
 			Type:    "number",
 			Default: "1",
 			Help:    "Risco 3 usa payloads mais agressivos (ex.: OOB).",
+			Min:     1,
+			Max:     3,
 		},
 		{
 			ID:      "threads",
 			Label:   "Threads",
 			Type:    "number",
 			Default: "4",
+			Min:     1,
 		},
 		{
 			ID:    "dump",
@@ -422,12 +430,15 @@ var hydraTool = &Tool{
 			Label:       "Porta (opcional)",
 			Type:        "number",
 			Placeholder: "2222",
+			Min:         1,
+			Max:         65535,
 		},
 		{
 			ID:      "threads",
 			Label:   "Threads",
 			Type:    "number",
 			Default: "16",
+			Min:     1,
 		},
 		{
 			ID:    "verbose",
@@ -545,6 +556,8 @@ var aircrackTool = &Tool{
 			Label:       "Canal (opcional)",
 			Type:        "number",
 			Placeholder: "6",
+			Min:         1,
+			Max:         165,
 		},
 		{
 			ID:      "capture",
@@ -593,6 +606,8 @@ var tcpdumpTool = &Tool{
 			Label:       "Porta (opcional)",
 			Type:        "number",
 			Placeholder: "443",
+			Min:         1,
+			Max:         65535,
 		},
 		{
 			ID:          "filter",
@@ -606,6 +621,7 @@ var tcpdumpTool = &Tool{
 			Label:       "Número de pacotes (opcional)",
 			Type:        "number",
 			Placeholder: "1000",
+			Min:         1,
 		},
 		{
 			ID:          "output",
@@ -914,6 +930,8 @@ var fluxionTool = &Tool{
 			Label:       "Canal (opcional)",
 			Type:        "number",
 			Placeholder: "6",
+			Min:         1,
+			Max:         165,
 		},
 		{
 			ID:      "lang",
@@ -985,6 +1003,7 @@ var ffufTool = &Tool{
 			Label:   "Threads",
 			Type:    "number",
 			Default: "40",
+			Min:     1,
 		},
 		{
 			ID:          "fc",
@@ -1108,6 +1127,7 @@ var masscanTool = &Tool{
 			Type:    "number",
 			Default: "1000",
 			Help:    "--rate. Comece baixo e aumente conforme a rede aguentar.",
+			Min:     1,
 		},
 		{
 			ID:          "iface",
@@ -1241,6 +1261,7 @@ var xsserTool = &Tool{
 			Label:   "Threads",
 			Type:    "number",
 			Default: "8",
+			Min:     1,
 		},
 		{
 			ID:    "verbose",
@@ -1291,6 +1312,8 @@ var commixTool = &Tool{
 			Type:    "number",
 			Default: "1",
 			Help:    "Maior nível = mais payloads e técnicas.",
+			Min:     1,
+			Max:     3,
 		},
 		{
 			ID:      "os",
@@ -1348,6 +1371,7 @@ var sherlockTool = &Tool{
 			Label:   "Timeout por site (s)",
 			Type:    "number",
 			Default: "5",
+			Min:     1,
 		},
 		{
 			ID:      "printFound",

@@ -108,6 +108,48 @@ func TestGenerateValidationError(t *testing.T) {
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("esperava 422, obtive %d", rec.Code)
 	}
+	var payload map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("json inválido: %v", err)
+	}
+	if payload["id"] == "" {
+		t.Error("422 deve incluir o id da pergunta que falhou")
+	}
+	if payload["question"] == "" || payload["reason"] == "" {
+		t.Error("422 deve incluir question e reason")
+	}
+}
+
+func TestUnknownAPIEndpointReturnsJSON404(t *testing.T) {
+	h := newTestServer().Routes(nil)
+	rec := doJSON(t, h, http.MethodGet, "/api/nao-existe", nil)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("esperava 404, obtive %d", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json; charset=utf-8" {
+		t.Errorf("404 de /api/ deveria ser JSON, Content-Type=%q", ct)
+	}
+	var payload map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("404 de /api/ deveria ter corpo JSON válido: %v", err)
+	}
+}
+
+func TestAPIResponsesAreNotCached(t *testing.T) {
+	h := newTestServer().Routes(nil)
+	for _, path := range []string{"/api/health", "/api/tools"} {
+		rec := doJSON(t, h, http.MethodGet, path, nil)
+		if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
+			t.Errorf("%s: esperava Cache-Control: no-store, obtive %q", path, cc)
+		}
+	}
+	rec := doJSON(t, h, http.MethodPost, "/api/generate", map[string]any{
+		"toolId":  "nmap",
+		"answers": map[string]string{},
+	})
+	if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
+		t.Errorf("generate 422: esperava Cache-Control: no-store, obtive %q", cc)
+	}
 }
 
 func TestGenerateMalformedBody(t *testing.T) {
@@ -143,5 +185,59 @@ func TestStaticServed(t *testing.T) {
 	}
 	if !bytes.Contains(rec.Body.Bytes(), []byte("<!doctype html>")) && !bytes.Contains(rec.Body.Bytes(), []byte("<!DOCTYPE")) {
 		t.Errorf("raiz deveria servir o index.html, obtive: %.100s", rec.Body.String())
+	}
+}
+
+func TestAPISlashExactReturnsJSON404(t *testing.T) {
+	h := newTestServer().Routes(nil)
+	rec := doJSON(t, h, http.MethodGet, "/api", nil)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("esperava 404, obtive %d", rec.Code)
+	}
+	var payload map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("/api deveria ter corpo JSON válido: %v", err)
+	}
+}
+
+func TestPanicRecoveryReturns500(t *testing.T) {
+	s := newTestServer()
+	panicking := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		panic("boom")
+	})
+	h := s.withMiddleware(panicking)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/boom", nil)
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("esperava 500 após panic, obtive %d", rec.Code)
+	}
+	if !bytes.Contains(rec.Body.Bytes(), []byte("erro interno")) {
+		t.Errorf("esperava mensagem de erro JSON, obtive: %s", rec.Body.String())
+	}
+}
+
+func TestCORSOnlyRepliesToRealPreflight(t *testing.T) {
+	s := New(tools.NewCatalog())
+	s.corsOrigin = "http://example.com"
+	h := s.Routes(nil)
+
+	// OPTIONS com Access-Control-Request-Method em caminho /api/ → 204
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodOptions, "/api/tools", nil)
+	req.Header.Set("Origin", "http://example.com")
+	req.Header.Set("Access-Control-Request-Method", "GET")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("esperava 204 para preflight real, obtive %d", rec.Code)
+	}
+
+	// OPTIONS sem pedido de CORS em caminho /api/ → 404 (não deve responder 204)
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodOptions, "/api/tools", nil)
+	req.Header.Set("Origin", "http://example.com")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("OPTIONS sem Access-Control-Request-Method não deveria receber 204, obtive %d", rec.Code)
 	}
 }

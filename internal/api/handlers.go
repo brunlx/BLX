@@ -80,6 +80,7 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		if errors.As(err, &ve) {
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{
 				"error":    "validação falhou",
+				"id":       ve.ID,
 				"question": ve.Question,
 				"reason":   ve.Reason,
 			})

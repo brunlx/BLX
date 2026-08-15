@@ -7,6 +7,8 @@
 
 const app = document.getElementById("app");
 
+let globalListenerBound = false;
+
 const state = {
   tools: [],
   categories: [],
@@ -24,7 +26,19 @@ const state = {
 /* ------------------------------------------------------------------ API */
 
 async function api(path, opts) {
-  const res = await fetch(path, opts);
+  const init = Object.assign({}, opts);
+  // Never hang forever on a dead server: generation and catalog load are
+  // bounded requests, so a hard timeout is safe.
+  if (!init.signal) init.signal = AbortSignal.timeout(20000);
+  let res;
+  try {
+    res = await fetch(path, init);
+  } catch (err) {
+    if (err.name === "TimeoutError" || err.name === "AbortError") {
+      throw Object.assign(new Error("Tempo limite excedido ao falar com o servidor"), { status: 0, data: {} });
+    }
+    throw err;
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw Object.assign(new Error(data.error || "Falha na requisição"), { data, status: res.status });
@@ -234,6 +248,7 @@ function openWizard(tool) {
   state.result = null;
   state.answers = {};
   tool.questions.forEach((qq) => {
+    delete qq.error;
     if (qq.default !== undefined && qq.default !== "") state.answers[qq.id] = qq.default;
   });
   state.view = "wizard";
@@ -289,7 +304,7 @@ function renderQuestion(q) {
       <div class="question__label">${esc(q.label)} ${q.required ? '<span class="question__req">*</span>' : ""}</div>
       ${q.help ? `<div class="question__help">${esc(q.help)}</div>` : ""}
       ${control}
-      <div class="question__error">${err ? err : ""}</div>
+      <div class="question__error">${err ? esc(err) : ""}</div>
     </div>
   `;
 }
@@ -354,7 +369,7 @@ function renderWizard() {
     state.generating = false;
     if (state.view === "result") {
       renderResult();
-    } else {
+    } else if (state.view === "wizard") {
       renderWizard();
       scrollToFirstError();
     }
@@ -426,6 +441,8 @@ function renderProgress() {
 }
 
 async function generate() {
+  const toolId = state.tool.id;
+
   // client-side required check (errors render on the re-rendered wizard)
   let hasClientError = false;
   state.tool.questions.forEach((q) => {
@@ -445,14 +462,21 @@ async function generate() {
     const result = await api("/api/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ toolId: state.tool.id, answers: state.answers }),
+      body: JSON.stringify({ toolId, answers: state.answers }),
     });
     state.result = result;
-    state.view = "result";
+    // Only promote to the result view when the user is still on the wizard of
+    // the tool that started this request (navigating/switching mid-flight must
+    // not replace the current screen with stale results).
+    if (state.view === "wizard" && state.tool && state.tool.id === toolId && result.toolId === toolId) {
+      state.view = "result";
+    }
   } catch (err) {
+    if (!state.tool || state.tool.id !== toolId) return;
     if (err.status === 422) {
       const q = state.tool.questions.find(
         (x) =>
+          x.id === err.data.id ||
           x.id === err.data.question ||
           x.label === err.data.question ||
           (err.data.question && x.label.startsWith(err.data.question))
@@ -583,12 +607,16 @@ function footer() {
 
 async function init() {
   // Logo navigation via event delegation (persists across re-renders).
-  document.addEventListener("click", (e) => {
-    if (e.target.closest('[data-action="home"]')) {
-      state.view = "home";
-      render();
-    }
-  });
+  // Registered once: retries call init() again and must not stack listeners.
+  if (!globalListenerBound) {
+    globalListenerBound = true;
+    document.addEventListener("click", (e) => {
+      if (e.target.closest('[data-action="home"]')) {
+        state.view = "home";
+        render();
+      }
+    });
+  }
 
   try {
     const data = await api("/api/tools");

@@ -31,6 +31,10 @@ jobs:
       - name: Test
         run: go test ./...
 
+      - name: Test (race)
+        if: runner.os == 'Linux'
+        run: go test -race ./...
+
       - name: Build
         run: go build -o bin/blx ./cmd/server
 

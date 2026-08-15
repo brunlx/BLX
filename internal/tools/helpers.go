@@ -13,7 +13,9 @@ var (
 )
 
 // ValidationError reports a problem with a single answer.
+// ID is the question id (empty when the error is not tied to one question).
 type ValidationError struct {
+	ID       string
 	Question string
 	Reason   string
 }
@@ -79,7 +81,7 @@ func q(v string) string {
 	if v == "" {
 		return ""
 	}
-	needsQuote := strings.ContainsAny(v, " \t\n;&|$()<>`\"'\\*?[]{}")
+	needsQuote := strings.ContainsAny(v, " \t\n\r;&|$()<>`\"'\\*?[]{}")
 	if needsQuote {
 		return shquote(v)
 	}
@@ -104,9 +106,33 @@ func validHost(v string) bool {
 	return true
 }
 
-// safeDQ reports whether v is safe to embed inside a double-quoted string in
-// a Windows cmd context: the only breakout characters there are the double
-// quote and newlines.
+// validIface reports whether v is a safe network interface name. Unlike
+// validHost it rejects slashes, colons and brackets (path/flag injection).
+func validIface(v string) bool {
+	if v == "" || len(v) > 32 {
+		return false
+	}
+	for _, r := range v {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == '-', r == '_', r == '.':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// validPort reports whether p is within the TCP/UDP port range.
+func validPort(p int) bool { return p >= 1 && p <= 65535 }
+
+// safeDQ reports whether v is safe to embed inside a double-quoted string.
+// The generated mimikatz command line is double-quoted and may run under
+// cmd, PowerShell or a POSIX shell, so the block list covers all three:
+// double quotes and newlines break out everywhere, while "$" and the
+// backtick enable command substitution in PowerShell/POSIX shells.
+// Backslashes are allowed on purpose: Windows ticket paths (C:\...\x.kirbi)
+// require them, and a bare "\" is inert inside double quotes in every shell.
 func safeDQ(v string) bool {
-	return !strings.ContainsAny(v, "\"\n\r")
+	return !strings.ContainsAny(v, "\"$\n\r`")
 }

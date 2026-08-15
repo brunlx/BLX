@@ -5,6 +5,8 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -18,7 +20,17 @@ import (
 	"github.com/Brunlx/BLX/internal/tools"
 )
 
+// version é injetada no build via -ldflags "-X main.version=<versão>".
+var version = "dev"
+
 func main() {
+	printVersion := flag.Bool("version", false, "exibe a versão e sai")
+	flag.Parse()
+	if *printVersion {
+		fmt.Println(version)
+		return
+	}
+
 	host := os.Getenv("HOST")
 	if host == "" {
 		host = "127.0.0.1"
@@ -41,6 +53,8 @@ func main() {
 		Addr:              addr,
 		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
 

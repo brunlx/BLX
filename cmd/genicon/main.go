@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"flag"
 	"fmt"
 	"image"
 	"image/color"
@@ -12,6 +13,9 @@ import (
 	"math"
 	"os"
 )
+
+// version é injetada no build via -ldflags "-X main.version=<versão>".
+var version = "dev"
 
 // iconSource é o arquivo da logo oficial do app, usado como fonte do icon.ico.
 const iconSource = "assets/blx-logo.png"
@@ -30,6 +34,13 @@ var (
 )
 
 func main() {
+	printVersion := flag.Bool("version", false, "exibe a versão e sai")
+	flag.Parse()
+	if *printVersion {
+		fmt.Println(version)
+		return
+	}
+
 	src, err := loadSource(iconSource)
 	if err != nil {
 		panic(err)
@@ -214,6 +225,9 @@ func resize(src image.Image, n int) *image.RGBA {
 
 func sampleBilinear(src image.Image, x, y float64) color.RGBA {
 	b := src.Bounds()
+	if b.Dx() < 2 || b.Dy() < 2 {
+		return color.RGBAModel.Convert(src.At(b.Min.X, b.Min.Y)).(color.RGBA)
+	}
 	maxX, maxY := b.Dx()-1, b.Dy()-1
 	xi := int(math.Floor(x))
 	yi := int(math.Floor(y))

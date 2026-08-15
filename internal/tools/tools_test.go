@@ -885,3 +885,243 @@ func TestNoCommandInjectionNewTools(t *testing.T) {
 		t.Fatalf("holehe: esperava ValidationError para e-mail malicioso, obtive %v", err)
 	}
 }
+
+func TestNetExecTargetIsQuoted(t *testing.T) {
+	c := NewCatalog()
+	res, err := c.Generate("impacket", map[string]string{
+		"tool":   "netexec",
+		"target": "10.0.0.1; echo INJECTED",
+		"user":   "admin",
+		"hash":   "aad3b435b51404eeaad3b435b51404ee",
+	})
+	if err != nil {
+		t.Fatalf("erro: %v", err)
+	}
+	code := res.Commands[0].Code
+	if strings.Contains(code, "10.0.0.1; echo INJECTED") && !strings.Contains(code, `'10.0.0.1; echo INJECTED'`) {
+		t.Errorf("alvo netexec não está quotado: %q", code)
+	}
+	if !strings.Contains(code, `nxc smb '10.0.0.1; echo INJECTED'`) {
+		t.Errorf("comando netexec inesperado: %q", code)
+	}
+}
+
+func TestInterfaceRejectsPathLikeInput(t *testing.T) {
+	c := NewCatalog()
+
+	bad := []struct {
+		tool string
+		ans  map[string]string
+	}{
+		{"aircrack-ng", map[string]string{"iface": "eth0; rm -rf /", "channel": "6", "ssid": "net"}},
+		{"fluxion", map[string]string{"iface": "wlan0mon/../../etc", "essid": "net"}},
+		{"masscan", map[string]string{"targets": "10.0.0.0/24", "ports": "80,443", "rate": "1000", "iface": "eth0:1"}},
+		{"kismet", map[string]string{"iface": "wlan0:mon"}},
+		{"tcpdump", map[string]string{"iface": "eth0/../lo"}},
+	}
+	for _, tc := range bad {
+		_, err := c.Generate(tc.tool, tc.ans)
+		var ve *ValidationError
+		if !errors.As(err, &ve) {
+			t.Errorf("%s: esperava ValidationError para interface inválida, obtive %v", tc.tool, err)
+		}
+	}
+}
+
+func TestInterfaceAcceptsValidNames(t *testing.T) {
+	c := NewCatalog()
+	for _, iface := range []string{"eth0", "wlan0mon", "ens33", "lo0.1", "wifi-5g"} {
+		_, err := c.Generate("tcpdump", map[string]string{"iface": iface, "filter": "tcp"})
+		if err != nil {
+			t.Errorf("tcpdump iface %q: erro inesperado: %v", iface, err)
+		}
+	}
+}
+
+func TestBloodHoundPrefersHashOverPassword(t *testing.T) {
+	c := NewCatalog()
+	res, err := c.Generate("bloodhound", map[string]string{
+		"collector": "bloodhound-python",
+		"user":      "svc",
+		"domain":    "corp.local",
+		"password":  "P@ssw0rd",
+		"hash":      "aad3b435b51404eeaad3b435b51404ee",
+		"method":    "All",
+		"ns":        "10.0.0.53",
+		"neo4j":     "false",
+	})
+	if err != nil {
+		t.Fatalf("erro: %v", err)
+	}
+	code := res.Commands[0].Code
+	if !strings.Contains(code, "--hashes aad3b435b51404eeaad3b435b51404ee") {
+		t.Errorf("esperava --hashes, obtive %q", code)
+	}
+	if strings.Contains(code, "-p P@ssw0rd") {
+		t.Errorf("hash presente deveria substituir a senha: %q", code)
+	}
+}
+
+func TestBloodHoundUsesPasswordWhenNoHash(t *testing.T) {
+	c := NewCatalog()
+	res, err := c.Generate("bloodhound", map[string]string{
+		"collector": "bloodhound-python",
+		"user":      "svc",
+		"domain":    "corp.local",
+		"password":  "P@ssw0rd",
+		"method":    "All",
+		"neo4j":     "false",
+	})
+	if err != nil {
+		t.Fatalf("erro: %v", err)
+	}
+	if !strings.Contains(res.Commands[0].Code, "-p P@ssw0rd") {
+		t.Errorf("esperava -p com senha, obtive %q", res.Commands[0].Code)
+	}
+}
+
+func TestNumberFieldRejectsNonInteger(t *testing.T) {
+	c := NewCatalog()
+	_, err := c.Generate("beef", map[string]string{
+		"install":  "apt",
+		"port":     "3000abc",
+		"hookHost": "10.0.0.1",
+	})
+	var ve *ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("esperava ValidationError para porta não inteira, obtive %v", err)
+	}
+	if ve.ID != "port" {
+		t.Errorf("esperava ID 'port', obtive %q", ve.ID)
+	}
+}
+
+func TestPortRangeValidation(t *testing.T) {
+	c := NewCatalog()
+
+	cases := []struct {
+		tool string
+		ans  map[string]string
+	}{
+		{"beef", map[string]string{"install": "apt", "port": "0", "hookHost": "10.0.0.1"}},
+		{"beef", map[string]string{"install": "apt", "port": "70000", "hookHost": "10.0.0.1"}},
+		{"caido", map[string]string{"deploy": "cli", "port": "0"}},
+		{"metasploit", map[string]string{"platform": "windows", "listener": "reverse_tcp", "lhost": "10.0.0.1", "lport": "70000"}},
+	}
+	for _, tc := range cases {
+		_, err := c.Generate(tc.tool, tc.ans)
+		var ve *ValidationError
+		if !errors.As(err, &ve) {
+			t.Errorf("%s: esperava ValidationError para porta fora do range, obtive %v", tc.tool, err)
+		}
+	}
+}
+
+func TestValidationErrorCarriesID(t *testing.T) {
+	c := NewCatalog()
+	_, err := c.Generate("nmap", map[string]string{})
+	var ve *ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("esperava ValidationError, obtive %v", err)
+	}
+	if ve.ID == "" {
+		t.Error("ValidationError deve carregar o ID da pergunta")
+	}
+}
+
+func TestDefaultsAppliedWhenAnswerEmpty(t *testing.T) {
+	c := NewCatalog()
+
+	res, err := c.Generate("impacket", map[string]string{
+		"target": "10.0.0.1",
+		"user":   "admin",
+	})
+	if err != nil {
+		t.Fatalf("impacket sem tool: %v", err)
+	}
+	if !strings.Contains(res.Commands[0].Code, "impacket-psexec") {
+		t.Errorf("esperava default psexec, obtive %q", res.Commands[0].Code)
+	}
+
+	res, err = c.Generate("mimikatz", map[string]string{})
+	if err != nil {
+		t.Fatalf("mimikatz sem module: %v", err)
+	}
+	if !strings.Contains(res.Commands[0].Code, "sekurlsa::logonpasswords") {
+		t.Errorf("esperava default logonpasswords, obtive %q", res.Commands[0].Code)
+	}
+}
+
+func TestNumberRangeValidation(t *testing.T) {
+	c := NewCatalog()
+
+	cases := []struct {
+		tool string
+		ans  map[string]string
+	}{
+		{"nikto", map[string]string{"url": "http://10.0.0.1", "port": "0"}},
+		{"nikto", map[string]string{"url": "http://10.0.0.1", "port": "70000"}},
+		{"aircrack-ng", map[string]string{"iface": "wlan0", "channel": "0"}},
+		{"aircrack-ng", map[string]string{"iface": "wlan0", "channel": "200"}},
+		{"fluxion", map[string]string{"iface": "wlan0", "channel": "0"}},
+		{"sqlmap", map[string]string{"url": "http://10.0.0.1", "level": "4"}},
+		{"sqlmap", map[string]string{"url": "http://10.0.0.1", "risk": "4"}},
+		{"commix", map[string]string{"url": "http://10.0.0.1", "level": "4"}},
+		{"tcpdump", map[string]string{"iface": "eth0", "count": "0"}},
+		{"hydra", map[string]string{"service": "ssh", "target": "10.0.0.1", "threads": "0"}},
+	}
+	for _, tc := range cases {
+		_, err := c.Generate(tc.tool, tc.ans)
+		var ve *ValidationError
+		if !errors.As(err, &ve) {
+			t.Errorf("%s: esperava ValidationError para número fora do range, obtive %v", tc.tool, err)
+		}
+	}
+}
+
+func TestSafeDQBlocksShellSubstitution(t *testing.T) {
+	c := NewCatalog()
+	_, err := c.Generate("mimikatz", map[string]string{
+		"module": "dcsync",
+		"domain": "corp$(touch /tmp/pwned)",
+	})
+	var ve *ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("esperava ValidationError para domínio com $(), obtive %v", err)
+	}
+
+	_, err = c.Generate("mimikatz", map[string]string{
+		"module": "dcsync",
+		"domain": "corp`id`",
+	})
+	if !errors.As(err, &ve) {
+		t.Fatalf("esperava ValidationError para domínio com backtick, obtive %v", err)
+	}
+}
+
+func TestAircrackCaptureIsQuoted(t *testing.T) {
+	c := NewCatalog()
+	res, err := c.Generate("aircrack-ng", map[string]string{
+		"iface":   "wlan0",
+		"channel": "6",
+		"capture": "x; touch /tmp/pwned",
+	})
+	if err != nil {
+		t.Fatalf("erro: %v", err)
+	}
+	last := res.Commands[len(res.Commands)-1].Code
+	if !strings.Contains(last, `'x; touch /tmp/pwned-01.cap'`) {
+		t.Errorf("prefixo de captura deveria estar quotado: %q", last)
+	}
+}
+
+func TestEmptySelectNoLongerProducesEmptyCommand(t *testing.T) {
+	c := NewCatalog()
+	res, err := c.Generate("mimikatz", map[string]string{})
+	if err != nil {
+		t.Fatalf("erro: %v", err)
+	}
+	if len(res.Commands) == 0 || strings.Contains(res.Commands[0].Code, `""`) {
+		t.Errorf("mimikatz sem module não deveria produzir argumento vazio: %q", res.Commands[0].Code)
+	}
+}

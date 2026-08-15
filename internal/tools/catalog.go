@@ -2,6 +2,11 @@
 // question flows and the engines that turn answers into ready-to-run commands.
 package tools
 
+import (
+	"strconv"
+	"strings"
+)
+
 // Option is a single selectable value inside a select/multi question.
 type Option struct {
 	Value string `json:"value"`
@@ -19,6 +24,8 @@ type Question struct {
 	Required    bool     `json:"required,omitempty"`
 	Options     []Option `json:"options,omitempty"`
 	Default     string   `json:"default,omitempty"`
+	Min         int      `json:"-"`
+	Max         int      `json:"-"`
 }
 
 // Tool describes a pentesting tool available in the catalog.
@@ -91,37 +98,68 @@ func (c *Catalog) Validate(id string, answers map[string]string) error {
 	}
 	for _, q := range t.Questions {
 		val, ok := answers[q.ID]
-		empty := !ok || val == ""
+		empty := !ok || strings.TrimSpace(val) == ""
 		if empty && q.Required {
-			return &ValidationError{Question: q.Label, Reason: "campo obrigatório não preenchido"}
+			return &ValidationError{ID: q.ID, Question: q.Label, Reason: "campo obrigatório não preenchido"}
 		}
 		if empty {
 			continue
 		}
+		if q.Type == "number" {
+			n, err := strconv.Atoi(strings.TrimSpace(val))
+			if err != nil {
+				return &ValidationError{ID: q.ID, Question: q.Label, Reason: "informe um número inteiro válido"}
+			}
+			if (q.Min != 0 && n < q.Min) || (q.Max != 0 && n > q.Max) {
+				return &ValidationError{ID: q.ID, Question: q.Label, Reason: "valor fora do intervalo permitido"}
+			}
+		}
 		if q.Type == "select" && !hasOption(q, val) {
-			return &ValidationError{Question: q.Label, Reason: "valor inválido: " + val}
+			return &ValidationError{ID: q.ID, Question: q.Label, Reason: "valor inválido"}
 		}
 		if q.Type == "multi" && !hasAllOptions(q, val) {
-			return &ValidationError{Question: q.Label, Reason: "valor inválido: " + val}
+			return &ValidationError{ID: q.ID, Question: q.Label, Reason: "valor inválido"}
 		}
 	}
 	return nil
 }
 
 // Generate validates the answers and delegates to the tool generator.
+// Unanswered optional questions that declare a default are filled in first,
+// so generators never see an empty value where a sensible default exists
+// (e.g. gobuster "dir", impacket "psexec", mimikatz "logonpasswords").
 func (c *Catalog) Generate(id string, answers map[string]string) (*Result, error) {
 	t := c.Tool(id)
 	if t == nil {
 		return nil, ErrUnknownTool
 	}
-	if err := c.Validate(id, answers); err != nil {
+	norm := withDefaults(t, answers)
+	if err := c.Validate(id, norm); err != nil {
 		return nil, err
 	}
 	gen, ok := c.generators[id]
 	if !ok {
 		return nil, ErrNoGenerator
 	}
-	return gen(t, answers)
+	return gen(t, norm)
+}
+
+// withDefaults returns a copy of answers where unanswered questions that
+// declare a default value are filled in. The caller's map is left untouched.
+func withDefaults(t *Tool, answers map[string]string) map[string]string {
+	norm := make(map[string]string, len(answers)+len(t.Questions))
+	for k, v := range answers {
+		norm[k] = v
+	}
+	for _, q := range t.Questions {
+		if q.Default == "" {
+			continue
+		}
+		if v, ok := norm[q.ID]; !ok || strings.TrimSpace(v) == "" {
+			norm[q.ID] = q.Default
+		}
+	}
+	return norm
 }
 
 func hasOption(q Question, val string) bool {

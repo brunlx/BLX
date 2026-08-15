@@ -82,6 +82,12 @@ go build -o bin/blx ./cmd/server
 PORT=8080 bin/blx
 ```
 
+Para conferir a versão do binário (informada pelo build de release):
+
+```bash
+./blx -version   # ex.: v0.2.0
+```
+
 Abra **http://localhost:8080** no navegador. Para servir para outras máquinas
 na rede (ex.: notebooks da equipe), rode com `HOST=0.0.0.0`.
 
@@ -105,12 +111,13 @@ na rede (ex.: notebooks da equipe), rode com `HOST=0.0.0.0`.
 
 ```bash
 make test     # go test ./...
+make test-race# go test ./... -race (detector de corridas)
 make vet      # go vet ./...
 make fmt      # gofmt -w .
 ```
 
-O repositório inclui CI no GitHub Actions (`go vet`, `go test` e build para
-Linux e Windows a cada push/PR).
+O repositório inclui CI no GitHub Actions (`go vet`, `go test`, `go test -race`
+no Linux e build para Linux/Windows a cada push/PR).
 
 ## Instalação no Windows (distribuição)
 

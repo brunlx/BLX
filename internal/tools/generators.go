@@ -190,7 +190,7 @@ func generateSQLMap(t *Tool, a map[string]string) (*Result, error) {
 	batch := boolAnswer(a, "batch")
 
 	if method == "post" && data == "" {
-		return nil, &ValidationError{Question: "Corpo POST / parâmetros", Reason: "necessário quando o método é POST"}
+		return nil, &ValidationError{ID: "data", Question: "Corpo POST / parâmetros", Reason: "necessário quando o método é POST"}
 	}
 
 	args := []string{"-u", q(url)}
@@ -244,13 +244,16 @@ func generateMetasploit(t *Tool, a map[string]string) (*Result, error) {
 	module := answer(a, "module")
 
 	if !validHost(lhost) {
-		return nil, &ValidationError{Question: "LHOST (seu IP de atacante)", Reason: "informe um IP ou hostname válido"}
+		return nil, &ValidationError{ID: "lhost", Question: "LHOST (seu IP de atacante)", Reason: "informe um IP ou hostname válido"}
+	}
+	if !validPort(lport) {
+		return nil, &ValidationError{ID: "lport", Question: "LPORT", Reason: "porta deve estar entre 1 e 65535"}
 	}
 	if rtarget != "" && !validHost(rtarget) {
-		return nil, &ValidationError{Question: "Alvo remoto (RHOSTS, opcional)", Reason: "informe um IP ou hostname válido"}
+		return nil, &ValidationError{ID: "rtarget", Question: "Alvo remoto (RHOSTS, opcional)", Reason: "informe um IP ou hostname válido"}
 	}
 	if module != "" && !validHost(module) {
-		return nil, &ValidationError{Question: "Módulo de exploit", Reason: "valor inválido de módulo"}
+		return nil, &ValidationError{ID: "module", Question: "Módulo de exploit", Reason: "valor inválido de módulo"}
 	}
 
 	payload := map[string]string{
@@ -324,8 +327,10 @@ func generateMetasploit(t *Tool, a map[string]string) (*Result, error) {
 		if rtarget != "" {
 			exploitLines = append(exploitLines, "set RHOSTS "+rtarget)
 		}
+		if listener != "bind_tcp" {
+			exploitLines = append(exploitLines, "set LHOST "+lhost)
+		}
 		exploitLines = append(exploitLines,
-			"set LHOST "+lhost,
 			fmt.Sprintf("set LPORT %d", lport),
 			"set PAYLOAD "+payload,
 			"run",
@@ -366,7 +371,7 @@ func generateHydra(t *Tool, a map[string]string) (*Result, error) {
 	verbose := boolAnswer(a, "verbose")
 
 	if login == "" && userlist == "" {
-		return nil, &ValidationError{Question: "Usuário / lista de usuários", Reason: "informe -l (usuário único) ou -L (lista de usuários)"}
+		return nil, &ValidationError{ID: "login", Question: "Usuário / lista de usuários", Reason: "informe -l (usuário único) ou -L (lista de usuários)"}
 	}
 
 	args := []string{}
@@ -390,7 +395,7 @@ func generateHydra(t *Tool, a map[string]string) (*Result, error) {
 	hint := "Ajuste a lista de senhas e usuários conforme o contexto."
 	if service == "http-post-form" {
 		if formdata == "" {
-			return nil, &ValidationError{Question: "Dados do form", Reason: "necessário para HTTP POST form"}
+			return nil, &ValidationError{ID: "formdata", Question: "Dados do form", Reason: "necessário para HTTP POST form"}
 		}
 		code = cmd("hydra", append(args, q(target), "http-post-form", q(formdata))...)
 		hint = "Formato: \"/caminho:dados:mensagem_de_falha\". ^USER^ e ^PASS^ são placeholders."
@@ -448,12 +453,12 @@ func generateHashcat(t *Tool, a map[string]string) (*Result, error) {
 		args = append(args, q(mask))
 	case "1":
 		if wordlist == "" {
-			return nil, &ValidationError{Question: "Wordlist", Reason: "necessária para ataque combinador"}
+			return nil, &ValidationError{ID: "wordlist", Question: "Wordlist", Reason: "necessária para ataque combinador"}
 		}
 		args = append(args, q(wordlist), q(wordlist))
 	default:
 		if wordlist == "" {
-			return nil, &ValidationError{Question: "Wordlist", Reason: "necessária para ataque de dicionário"}
+			return nil, &ValidationError{ID: "wordlist", Question: "Wordlist", Reason: "necessária para ataque de dicionário"}
 		}
 		args = append(args, q(wordlist))
 	}
@@ -490,8 +495,8 @@ func generateAircrack(t *Tool, a map[string]string) (*Result, error) {
 	if capture == "" {
 		capture = "capture"
 	}
-	if !validHost(iface) {
-		return nil, &ValidationError{Question: "Interface wireless", Reason: "valor inválido de interface"}
+	if !validIface(iface) {
+		return nil, &ValidationError{ID: "iface", Question: "Interface wireless", Reason: "valor inválido de interface"}
 	}
 	mon := iface + "mon"
 
@@ -531,7 +536,7 @@ func generateAircrack(t *Tool, a map[string]string) (*Result, error) {
 	commands = append(commands, Command{
 		Title:    "Quebrar a senha",
 		Language: "shell",
-		Code:     cmd("sudo", "aircrack-ng", "-w", q(wordlist), capture+"-01.cap"),
+		Code:     cmd("sudo", "aircrack-ng", "-w", q(wordlist), q(capture+"-01.cap")),
 		Hint:     "Use o nome real do .cap gerado pelo airodump (ex.: " + capture + "-01.cap).",
 	})
 
@@ -564,6 +569,9 @@ func generateTCPDump(t *Tool, a map[string]string) (*Result, error) {
 	verbose := boolAnswer(a, "verbose")
 	if iface == "" {
 		iface = "any"
+	}
+	if !validIface(iface) {
+		return nil, &ValidationError{ID: "iface", Question: "Interface", Reason: "valor inválido de interface"}
 	}
 
 	args := []string{"-i", q(iface)}
@@ -629,7 +637,7 @@ func generateImpacket(t *Tool, a map[string]string) (*Result, error) {
 		principal = domain + "/" + user
 	}
 	if principal == "" {
-		return nil, &ValidationError{Question: "Usuário", Reason: "informe ao menos o usuário ou domínio"}
+		return nil, &ValidationError{ID: "user", Question: "Usuário", Reason: "informe o usuário (o domínio sozinho não é suficiente)"}
 	}
 
 	auth := []string{}
@@ -688,7 +696,7 @@ func generateImpacket(t *Tool, a map[string]string) (*Result, error) {
 			Hint:     "Tente XP_CMDSHELL para execução se habilitado: enable_xp_cmdshell",
 		})
 	case "netexec":
-		args := []string{"smb", target}
+		args := []string{"smb", q(target)}
 		if user != "" {
 			args = append(args, "-u", q(user))
 		}
@@ -749,10 +757,10 @@ func generateMimikatz(t *Tool, a map[string]string) (*Result, error) {
 		mainCode = `sekurlsa::logonpasswords`
 	case "dcsync":
 		if domain == "" {
-			return nil, &ValidationError{Question: "Domínio", Reason: "necessário para DCSync"}
+			return nil, &ValidationError{ID: "domain", Question: "Domínio", Reason: "necessário para DCSync"}
 		}
 		if !safeDQ(domain) || !safeDQ(user) {
-			return nil, &ValidationError{Question: "Domínio / usuário", Reason: "valor inválido"}
+			return nil, &ValidationError{ID: "domain", Question: "Domínio / usuário", Reason: "valor inválido"}
 		}
 		if user == "" {
 			user = "krbtgt"
@@ -760,13 +768,13 @@ func generateMimikatz(t *Tool, a map[string]string) (*Result, error) {
 		mainCode = fmt.Sprintf(`lsadump::dcsync /domain:%s /user:%s`, domain, user)
 	case "pth":
 		if user == "" {
-			return nil, &ValidationError{Question: "Usuário alvo", Reason: "necessário para Pass-the-Hash"}
+			return nil, &ValidationError{ID: "user", Question: "Usuário alvo", Reason: "necessário para Pass-the-Hash"}
 		}
 		if hash == "" {
-			return nil, &ValidationError{Question: "Hash NT/NTLM", Reason: "necessário para Pass-the-Hash"}
+			return nil, &ValidationError{ID: "hash", Question: "Hash NT/NTLM", Reason: "necessário para Pass-the-Hash"}
 		}
 		if !safeDQ(user) || !safeDQ(domain) || !safeDQ(hash) {
-			return nil, &ValidationError{Question: "Usuário / domínio / hash", Reason: "valor inválido"}
+			return nil, &ValidationError{ID: "user", Question: "Usuário / domínio / hash", Reason: "valor inválido"}
 		}
 		if domain == "" {
 			domain = "."
@@ -774,10 +782,10 @@ func generateMimikatz(t *Tool, a map[string]string) (*Result, error) {
 		mainCode = fmt.Sprintf(`sekurlsa::pth /user:%s /domain:%s /ntlm:%s /run:cmd.exe`, user, domain, hash)
 	case "ptt":
 		if ticket == "" {
-			return nil, &ValidationError{Question: "Caminho do ticket", Reason: "necessário para Pass-the-Ticket"}
+			return nil, &ValidationError{ID: "ticket", Question: "Caminho do ticket", Reason: "necessário para Pass-the-Ticket"}
 		}
 		if !safeDQ(ticket) {
-			return nil, &ValidationError{Question: "Caminho do ticket", Reason: "valor inválido"}
+			return nil, &ValidationError{ID: "ticket", Question: "Caminho do ticket", Reason: "valor inválido"}
 		}
 		mainCode = `kerberos::ptt ` + ticket
 	}
@@ -817,6 +825,10 @@ func generateCaido(t *Tool, a map[string]string) (*Result, error) {
 	port := intAnswer(a, "port", 8080)
 	datadir := answer(a, "datadir")
 	noopen := boolAnswer(a, "noopen")
+
+	if !validPort(port) {
+		return nil, &ValidationError{ID: "port", Question: "Porta do proxy", Reason: "porta deve estar entre 1 e 65535"}
+	}
 
 	commands := []Command{}
 	switch deploy {
@@ -906,11 +918,10 @@ func generateBloodHound(t *Tool, a map[string]string) (*Result, error) {
 		collectorHint = "Execute no host Windows alvo (ou com credenciais) e importe o .zip gerado no BloodHound."
 	} else {
 		args := []string{"-u", q(user), "-d", q(domain), "-c", method}
-		if password != "" {
-			args = append(args, "-p", q(password))
-		}
 		if hash != "" {
 			args = append(args, "--hashes", q(hash))
+		} else if password != "" {
+			args = append(args, "-p", q(password))
 		}
 		if ns != "" {
 			args = append(args, "-ns", q(ns))
@@ -960,8 +971,8 @@ func generateFluxion(t *Tool, a map[string]string) (*Result, error) {
 	if lang == "" {
 		lang = "pt"
 	}
-	if !validHost(iface) {
-		return nil, &ValidationError{Question: "Interface wireless", Reason: "valor inválido de interface"}
+	if !validIface(iface) {
+		return nil, &ValidationError{ID: "iface", Question: "Interface wireless", Reason: "valor inválido de interface"}
 	}
 
 	commands := []Command{
@@ -1023,7 +1034,7 @@ func generateFFUF(t *Tool, a map[string]string) (*Result, error) {
 	switch mode {
 	case "vhost":
 		if domain == "" {
-			return nil, &ValidationError{Question: "Domínio base (modo vhost)", Reason: "necessário para montar o header Host: FUZZ.<domínio>"}
+			return nil, &ValidationError{ID: "domain", Question: "Domínio base (modo vhost)", Reason: "necessário para montar o header Host: FUZZ.<domínio>"}
 		}
 		args = append(args, "-u", q(url), "-H", q("Host: FUZZ."+domain), "-w", q(wordlist))
 	case "fuzz":
@@ -1076,10 +1087,10 @@ func generateMsfvenom(t *Tool, a map[string]string) (*Result, error) {
 	encoder := answer(a, "encoder")
 
 	if !validHost(lhost) {
-		return nil, &ValidationError{Question: "LHOST (seu IP de atacante)", Reason: "informe um IP ou hostname válido"}
+		return nil, &ValidationError{ID: "lhost", Question: "LHOST (seu IP de atacante)", Reason: "informe um IP ou hostname válido"}
 	}
 	if lport < 1 || lport > 65535 {
-		return nil, &ValidationError{Question: "LPORT", Reason: "porta deve estar entre 1 e 65535"}
+		return nil, &ValidationError{ID: "lport", Question: "LPORT", Reason: "porta deve estar entre 1 e 65535"}
 	}
 
 	payload := map[string]string{
@@ -1173,8 +1184,8 @@ func generateMasscan(t *Tool, a map[string]string) (*Result, error) {
 	if ports == "" {
 		ports = "80,443"
 	}
-	if iface != "" && !validHost(iface) {
-		return nil, &ValidationError{Question: "Interface", Reason: "valor inválido de interface"}
+	if iface != "" && !validIface(iface) {
+		return nil, &ValidationError{ID: "iface", Question: "Interface", Reason: "valor inválido de interface"}
 	}
 
 	args := []string{q(targets), "-p", q(ports)}
@@ -1226,7 +1237,10 @@ func generateBeEF(t *Tool, a map[string]string) (*Result, error) {
 	port := intAnswer(a, "port", 3000)
 	hookHost := answer(a, "hookHost")
 	if !validHost(hookHost) {
-		return nil, &ValidationError{Question: "Endereço acessível pelas vítimas", Reason: "informe um IP ou hostname válido"}
+		return nil, &ValidationError{ID: "hookHost", Question: "Endereço acessível pelas vítimas", Reason: "informe um IP ou hostname válido"}
+	}
+	if !validPort(port) {
+		return nil, &ValidationError{ID: "port", Question: "Porta HTTP", Reason: "porta deve estar entre 1 e 65535"}
 	}
 
 	commands := []Command{}
@@ -1277,8 +1291,8 @@ func generateKismet(t *Tool, a map[string]string) (*Result, error) {
 	iface := answer(a, "iface")
 	hop := boolAnswer(a, "channelHop")
 	logtitle := answer(a, "logtitle")
-	if !validHost(iface) {
-		return nil, &ValidationError{Question: "Interface wireless", Reason: "valor inválido de interface"}
+	if !validIface(iface) {
+		return nil, &ValidationError{ID: "iface", Question: "Interface wireless", Reason: "valor inválido de interface"}
 	}
 
 	args := []string{"-c", q(iface)}
@@ -1367,7 +1381,7 @@ func generateCommix(t *Tool, a map[string]string) (*Result, error) {
 	randomAgent := boolAnswer(a, "randomAgent")
 
 	if method == "post" && data == "" {
-		return nil, &ValidationError{Question: "Corpo POST / parâmetros", Reason: "necessário quando o método é POST"}
+		return nil, &ValidationError{ID: "data", Question: "Corpo POST / parâmetros", Reason: "necessário quando o método é POST"}
 	}
 
 	args := []string{"--url", q(url)}
@@ -1420,7 +1434,7 @@ func generateSherlock(t *Tool, a map[string]string) (*Result, error) {
 	noColor := boolAnswer(a, "noColor")
 	output := answer(a, "output")
 	if len(usernames) == 0 {
-		return nil, &ValidationError{Question: "Nome(s) de usuário", Reason: "informe ao menos um nome de usuário"}
+		return nil, &ValidationError{ID: "usernames", Question: "Nome(s) de usuário", Reason: "informe ao menos um nome de usuário"}
 	}
 
 	args := []string{}
@@ -1469,7 +1483,7 @@ func generateHolehe(t *Tool, a map[string]string) (*Result, error) {
 	csv := answer(a, "csv")
 
 	if !strings.Contains(email, "@") || strings.ContainsAny(email, " \t\n\"'`$;&|()<>\\") {
-		return nil, &ValidationError{Question: "Endereço de e-mail", Reason: "informe um e-mail válido"}
+		return nil, &ValidationError{ID: "email", Question: "Endereço de e-mail", Reason: "informe um e-mail válido"}
 	}
 
 	args := []string{q(email)}
@@ -1511,10 +1525,10 @@ func generateRDNS(t *Tool, a map[string]string) (*Result, error) {
 	resolver := answer(a, "resolver")
 	output := answer(a, "output")
 	if target == "" {
-		return nil, &ValidationError{Question: "Alvo (IP, range ou rede)", Reason: "campo obrigatório não preenchido"}
+		return nil, &ValidationError{ID: "target", Question: "Alvo (IP, range ou rede)", Reason: "campo obrigatório não preenchido"}
 	}
 	if resolver != "" && !validHost(resolver) {
-		return nil, &ValidationError{Question: "Nameserver", Reason: "informe um IP ou hostname válido"}
+		return nil, &ValidationError{ID: "resolver", Question: "Nameserver", Reason: "informe um IP ou hostname válido"}
 	}
 
 	var code, hint string
