@@ -7,7 +7,7 @@
 ;; =============================================================
 
 #define MyAppName "BLX"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "0.2.0"
 #define MyAppPublisher "BLX"
 #define MyAppExeName "BLX.exe"
 

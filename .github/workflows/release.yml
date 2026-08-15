@@ -44,6 +44,16 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Install go-winres
+        run: go install github.com/tc-hib/go-winres@v0.3.3
+
+      - name: Embed resources (Windows)
+        if: matrix.goos == 'windows'
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          go-winres make --in winres/winres.json --out cmd/server/rsrc --arch amd64 \
+            --product-version="$VERSION" --file-version="$VERSION"
+
       - name: Build
         env:
           GOOS: ${{ matrix.goos }}

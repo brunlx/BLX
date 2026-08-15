@@ -5,22 +5,32 @@ VERSION  ?= dev
 LDFLAGS  := -s -w -X main.version=$(VERSION)
 
 BIN_WIN  := bin/blx.exe
-RSRC     := $(shell go env GOPATH)/bin/rsrc
+WINVER   ?= 0.2.0
+WINRES   := $(shell go env GOPATH)/bin/go-winres
+WINRES_JSON := winres/winres.json
 
-.PHONY: all build build-windows build-icon build-installer run test test-race vet fmt clean
+.PHONY: all build build-windows winres build-icon build-installer run test test-race vet fmt clean
 
 all: build
 
 build:
 	go build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/server
 
-build-windows:
+$(WINRES):
+	go install github.com/tc-hib/go-winres@v0.3.3
+
+winres: $(WINRES)
+	$(WINRES) make --in $(WINRES_JSON) --out cmd/server/rsrc --arch amd64 \
+		--product-version=$(WINVER) --file-version=$(WINVER)
+
+build-windows: winres
 	GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN_WIN) ./cmd/server
 
 build-icon:
-	$(RM) cmd/server/rsrc_windows_amd64.syso
+	$(RM) cmd/server/rsrc_windows_*.syso
 	go run ./cmd/genicon
-	$(RSRC) -ico assets/icon.ico -o cmd/server/rsrc_windows_amd64.syso
+	$(WINRES) make --in $(WINRES_JSON) --out cmd/server/rsrc --arch amd64 \
+		--product-version=$(WINVER) --file-version=$(WINVER)
 
 build-installer: build-windows
 	wine "C:/Program Files/Inno Setup 7/ISCC.exe" /F"BLX-Setup" installer.iss
@@ -42,3 +52,4 @@ fmt:
 
 clean:
 	rm -rf bin
+	rm -f cmd/server/rsrc_windows_*.syso

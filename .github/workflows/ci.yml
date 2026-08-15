@@ -40,7 +40,10 @@ jobs:
 
       - name: Build (Windows, only on Linux)
         if: runner.os == 'Linux'
-        run: GOOS=windows GOARCH=amd64 go build -o bin/blx.exe ./cmd/server
+        run: |
+          go install github.com/tc-hib/go-winres@v0.3.3
+          go-winres make --in winres/winres.json --out cmd/server/rsrc --arch amd64
+          GOOS=windows GOARCH=amd64 go build -o bin/blx.exe ./cmd/server
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7

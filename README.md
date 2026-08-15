@@ -126,10 +126,15 @@ equipe:
 
 ```bash
 # Linux (uma única máquina de build):
-make build-icon      # regenera o ícone embutido no .exe (opcional)
-make build-windows   # gera bin/blx.exe com o ícone
+make build-icon      # regenera ícone + recursos (versão/manifest) do .exe (opcional)
+make build-windows   # gera bin/blx.exe com ícone, versão e manifest embutidos
 make build-installer # gera output/BLX-Setup.exe via Inno Setup (wine)
 ```
+
+O executável Windows da release inclui **ícone oficial, metadados de versão
+(aba "Detalhes" do Explorer) e manifest** (DPI-aware, long-path, sem prompt
+de UAC). Ainda assim, por não ser assinado digitalmente, o **SmartScreen pode
+exibir aviso** — veja abaixo.
 
 O instalador:
 
@@ -172,6 +177,7 @@ BLX/
 │   ├── wizard-large.png          # painel lateral do instalador (164x314)
 │   └── wizard-small.png          # ícone pequeno do instalador (55x58)
 ├── .github/workflows/ci.yml      # CI (vet, test, build Linux/Windows)
+├── winres/winres.json            # recursos do .exe (ícone, versão, manifest)
 ├── installer.iss                 # script do instalador Windows (Inno Setup)
 ├── LICENSE.txt                   # termos exibidos na instalação
 ├── Makefile                      # build, run, test, vet, fmt
