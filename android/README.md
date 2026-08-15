@@ -5,8 +5,9 @@ gerado localmente. Funciona 100% offline, sem PC e sem internet.
 
 ## Estrutura
 
-- `app/src/main/AndroidManifest.xml` — manifesto do app (permissão INTERNET, cleartext para localhost)
+- `app/src/main/AndroidManifest.xml` — manifesto do app (INTERNET, cleartext p/ localhost, `extractNativeLibs`)
 - `app/src/main/java/com/brunlx/blx/MainActivity.java` — WebView + gerenciamento do processo do servidor
+- `app/src/main/res/` — ícones do launcher (PNGs + adaptive icon)
 - `build-apk.sh` — build completo sem Gradle (aapt2, d8, zipalign, apksigner)
 - `keystore.jks` — keystore de assinatura (gerado no 1º build; **não commitar**)
 
@@ -20,7 +21,7 @@ gerado localmente. Funciona 100% offline, sem PC e sem internet.
 ## Como construir
 
 ```bash
-make apk          # ou: VERSION=0.2.3 ./android/build-apk.sh
+make apk          # ou: VERSION=0.2.4 ./android/build-apk.sh
 ```
 
 O SDK é baixado automaticamente para `$HOME/Android/Sdk` na primeira execução.
@@ -28,11 +29,26 @@ O APK sai em `android/BLX-<versão>.apk` (padrão: tag git atual).
 
 ## Como funciona
 
-1. O binário `cmd/server` é compilado para `android/arm64` e embutido em `assets/`.
-2. No app, o binário é extraído para `filesDir`, chmod 755 e iniciado via
-   `ProcessBuilder` com `HOST=127.0.0.1 PORT=8080 -no-browser`.
+O binário `cmd/server` é compilado com `GOOS=android GOARCH=arm64 CGO_ENABLED=0`
+(PIE, com o linker bionic `/system/bin/linker64`) e empacotado como **lib nativa**
+em `lib/arm64-v8a/libblxserver.so` (vem de `jniLibs/`).
+
+Isso é obrigatório: desde o **Android 10**, o SELinux (política W^X) **bloqueia
+`exec()` em arquivos de `getFilesDir()`** (`chmod +x` não resolve). O instalador
+extrai a lib para `nativeLibraryDir`, que tem rótulo `exec_type` e é executável.
+Por isso o binário vai em `jniLibs/` e não em `assets/`.
+
+1. No app, o caminho da lib é resolvido via `getApplicationInfo().nativeLibraryDir`.
+2. O binário é iniciado via `ProcessBuilder` com `HOST=127.0.0.1 PORT=8080 -no-browser`.
 3. O WebView espera o servidor responder em `127.0.0.1:8080` e carrega a interface.
 4. Ao fechar o app, o processo é encerrado. Logs em `filesDir/blx-server.log`.
+
+O servidor é 100% em memória (não grava arquivos), então roda de qualquer cwd.
+
+## Arquiteturas
+
+Só **arm64-v8a** (Android 7+). O Go sem cgo/NDK não compila `android/arm` nem
+`android/amd64`; a esmagadora maioria dos celulares modernos é arm64.
 
 ## Assinatura
 

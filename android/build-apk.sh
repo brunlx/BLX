@@ -42,11 +42,24 @@ ensure_sdk() {
 }
 
 build_go_binary() {
-  echo "==> Compilando servidor BLX (GOOS=android GOARCH=arm64)..."
+  echo "==> Compilando servidor BLX (GOOS=android, multi-ABI)..."
+  # O binário é empacotado como lib nativa (jniLibs/<abi>/libblxserver.so): o
+  # instalador extrai para nativeLibraryDir, único lugar executável desde o
+  # Android 10 (SELinux W^X bloqueia exec em getFilesDir()).
+  # GOOS=android sem cgo (NDK) suporta apenas arm64; arm/amd64 exigiriam
+  # compilador cruzado. arm64-v8a cobre a esmagadora maioria dos dispositivos.
+  build_abi arm64-v8a arm64 ""
+}
+
+build_abi() {
+  local abi="$1" arch="$2" goarm="$3"
+  local out="$SCRIPT_DIR/stage/jniLibs/$abi/libblxserver.so"
+  mkdir -p "$(dirname "$out")"
   (cd "$REPO_DIR" && \
-   GOOS=android GOARCH=arm64 CGO_ENABLED=0 \
+   GOOS=android GOARCH="$arch" GOARM="$goarm" CGO_ENABLED=0 \
    go build -trimpath -ldflags "-s -w" \
-   -o "$SCRIPT_DIR/stage/assets/blx-server" ./cmd/server)
+   -o "$out" ./cmd/server)
+  echo "   $abi: $(du -h "$out" | cut -f1)"
 }
 
 ensure_keystore() {
@@ -62,7 +75,7 @@ ensure_keystore() {
 build() {
   ensure_sdk
   ensure_keystore
-  mkdir -p "$SCRIPT_DIR/stage/assets" "$SCRIPT_DIR/stage/classes" "$SCRIPT_DIR/stage/dex"
+  mkdir -p "$SCRIPT_DIR/stage/classes" "$SCRIPT_DIR/stage/dex" "$SCRIPT_DIR/stage/res"
   build_go_binary
 
   echo "==> Compilando MainActivity..."
@@ -76,34 +89,38 @@ build() {
     --output "$SCRIPT_DIR/stage/dex" \
     $(find "$SCRIPT_DIR/stage/classes" -name '*.class')
 
+  echo "==> Compilando resources..."
+  "$BT/aapt2" compile --dir "$SCRIPT_DIR/app/src/main/res" \
+    -o "$SCRIPT_DIR/stage/res" >/dev/null
+
   echo "==> Empacotando recursos e manifesto..."
   "$BT/aapt2" link -o "$SCRIPT_DIR/stage/unsigned.apk" \
     --manifest "$SCRIPT_DIR/app/src/main/AndroidManifest.xml" \
     -I "$PLATFORM/android.jar" \
     --min-sdk-version 24 --target-sdk-version 34 \
-    --version-code "$VERSION_CODE" --version-name "$VERSION"
+    --version-code "$VERSION_CODE" --version-name "$VERSION" \
+    $(find "$SCRIPT_DIR/stage/res" -name '*.flat')
 
-  echo "==> Adicionando classes.dex (stored) e assets..."
-  cp "$SCRIPT_DIR/stage/unsigned.apk" "$SCRIPT_DIR/stage/with-assets.apk"
+  echo "==> Adicionando classes.dex (stored) e lib nativa (stored)..."
+  cp "$SCRIPT_DIR/stage/unsigned.apk" "$SCRIPT_DIR/stage/with-libs.apk"
   python3 - "$SCRIPT_DIR/stage" <<'PY'
 import os
 import sys
 import zipfile
 
 stage = sys.argv[1]
-apk = os.path.join(stage, "with-assets.apk")
+apk = os.path.join(stage, "with-libs.apk")
 with zipfile.ZipFile(apk, "a", allowZip64=True) as zf:
     zf.write(os.path.join(stage, "dex", "classes.dex"), "classes.dex",
              compress_type=zipfile.ZIP_STORED)
-    for root, _dirs, files in os.walk(os.path.join(stage, "assets")):
-        for f in files:
-            full = os.path.join(root, f)
-            arc = os.path.relpath(full, stage)
-            zf.write(full, arc, compress_type=zipfile.ZIP_DEFLATED)
+    for abi in sorted(os.listdir(os.path.join(stage, "jniLibs"))):
+        for f in os.listdir(os.path.join(stage, "jniLibs", abi)):
+            full = os.path.join(stage, "jniLibs", abi, f)
+            zf.write(full, "lib/%s/%s" % (abi, f), compress_type=zipfile.ZIP_STORED)
 PY
 
   echo "==> Alinhando (zipalign)..."
-  "$BT/zipalign" -f 4 "$SCRIPT_DIR/stage/with-assets.apk" "$SCRIPT_DIR/stage/aligned.apk"
+  "$BT/zipalign" -f 4 "$SCRIPT_DIR/stage/with-libs.apk" "$SCRIPT_DIR/stage/aligned.apk"
 
   echo "==> Assinando..."
   "$BT/apksigner" sign --ks "$KEYSTORE" --ks-pass "pass:$KEYSTORE_PASS" \

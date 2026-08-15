@@ -18,9 +18,7 @@ import android.widget.ProgressBar;
 import android.widget.Toast;
 
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.net.Socket;
 
 public class MainActivity extends Activity {
@@ -83,13 +81,13 @@ public class MainActivity extends Activity {
     }
 
     private void startServer() {
-        final File bin = new File(getFilesDir(), "blx-server");
-        try {
-            extractAsset("blx-server", bin);
-        } catch (IOException e) {
-            Log.e(TAG, "falha ao extrair binario", e);
-            fail("Falha ao extrair o servidor: " + e.getMessage());
+        final File bin = resolveBinary();
+        if (bin == null) {
+            fail("Servidor BLX ausente neste aparelho (arquitetura nao suportada).");
             return;
+        }
+        if (!bin.canExecute()) {
+            Log.w(TAG, "binario sem permissao de execucao: " + bin);
         }
 
         File log = new File(getFilesDir(), "blx-server.log");
@@ -138,20 +136,24 @@ public class MainActivity extends Activity {
         t.start();
     }
 
-    private void extractAsset(String name, File dest) throws IOException {
-        InputStream in = getAssets().open(name);
-        FileOutputStream out = new FileOutputStream(dest);
-        byte[] buf = new byte[65536];
-        int n;
-        while ((n = in.read(buf)) > 0) {
-            out.write(buf, 0, n);
+    /**
+     * O instalador extrai libblxserver.so (a partir de jniLibs/<abi>/ no APK)
+     * para nativeLibraryDir, um diretorio marcado como exec_type pelo SELinux
+     * (executar binarios a partir de getFilesDir() e bloqueado desde o
+     * Android 10). Resolve o caminho real da lib nativa.
+     */
+    private File resolveBinary() {
+        String libDir = getApplicationInfo().nativeLibraryDir;
+        File[] candidates = new File[]{
+                new File(libDir, "libblxserver.so"),
+                new File(new File(libDir, "lib"), "libblxserver.so"),
+        };
+        for (File c : candidates) {
+            if (c.exists()) {
+                return c;
+            }
         }
-        out.flush();
-        out.close();
-        in.close();
-        if (!dest.setExecutable(true, true)) {
-            Log.w(TAG, "falha ao marcar binario como executavel");
-        }
+        return null;
     }
 
     private boolean ping() {
