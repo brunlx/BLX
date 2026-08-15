@@ -11,7 +11,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -25,6 +27,7 @@ var version = "dev"
 
 func main() {
 	printVersion := flag.Bool("version", false, "exibe a versão e sai")
+	noBrowser := flag.Bool("no-browser", false, "não abre o navegador ao iniciar (uso servidor)")
 	flag.Parse()
 	if *printVersion {
 		fmt.Println(version)
@@ -73,6 +76,18 @@ func main() {
 		}
 	}()
 
+	if !*noBrowser {
+		browserURL := "http://" + addr
+		if host == "0.0.0.0" || host == "::" {
+			browserURL = "http://127.0.0.1:" + port
+		}
+		go func() {
+			if waitServerReady(browserURL, 3*time.Second) {
+				openBrowser(browserURL)
+			}
+		}()
+	}
+
 	<-ctx.Done()
 	log.Println("desligando servidor...")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -81,4 +96,39 @@ func main() {
 		log.Printf("erro ao desligar: %v", err)
 	}
 	log.Println("servidor encerrado.")
+}
+
+// waitServerReady aguarda o servidor responder em baseURL até timeout.
+func waitServerReady(baseURL string, timeout time.Duration) bool {
+	client := &http.Client{Timeout: 500 * time.Millisecond}
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		resp, err := client.Get(baseURL + "/api/health")
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				return true
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return false
+}
+
+// openBrowser abre a URL no navegador padrão do sistema.
+func openBrowser(url string) {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+	case "darwin":
+		cmd = exec.Command("open", url)
+	default:
+		cmd = exec.Command("xdg-open", url)
+	}
+	if err := cmd.Start(); err != nil {
+		log.Printf("aviso: não foi possível abrir o navegador: %v", err)
+		return
+	}
+	go cmd.Wait()
 }

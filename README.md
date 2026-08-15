@@ -91,6 +91,10 @@ Para conferir a versão do binário (informada pelo build de release):
 Abra **http://localhost:8080** no navegador. Para servir para outras máquinas
 na rede (ex.: notebooks da equipe), rode com `HOST=0.0.0.0`.
 
+Ao iniciar, o BLX **abre o navegador automaticamente** na interface (como um
+app comum) — basta executar o binário. Em servidores sem desktop/headless,
+use `-no-browser` para desativar esse comportamento.
+
 ### Variáveis de ambiente
 
 | Variável      | Padrão      | Descrição                                        |
