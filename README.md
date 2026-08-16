@@ -1,4 +1,8 @@
-# BLX
+<p align="center">
+  <img src="assets/blx-logo.png" alt="BLX" width="160">
+</p>
+
+<h1 align="center">BLX</h1>
 
 Gerador de comandos de pentest: o profissional **escolhe a ferramenta**, o app
 **pergunta como e com o que** ela será usada e, ao final, entrega **comandos
